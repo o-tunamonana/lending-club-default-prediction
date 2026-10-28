@@ -1,0 +1,9 @@
+# Raw dataset (167 MB, above GitHub's 100 MB limit) - download link in README
+data/LC_loans_granting_model_dataset.csv
+
+# Jupyter / Python temporary files
+.ipynb_checkpoints/
+__pycache__/
+
+# OS files
+.DS_Store
