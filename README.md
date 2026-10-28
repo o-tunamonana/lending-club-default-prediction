@@ -65,8 +65,8 @@ Each person documents their own work and presents for about two minutes. The pro
 | Member | Student ID | Role | Main responsibilities | Cross-reviewer |
 |---|---|---|---|---|
 | Dora Zhuang | 261012351 | Project Lead & Storyteller | Business framing, metrics, README, assumptions, limitations, slides and presentation flow | TBD |
-| TBD | TBD | Data Exploration | Variable profiles, data quirks, charts and takeaways | TBD |
-| TBD | TBD | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges | TBD |
+| Sirui Chen| 261342345 | Data Exploration | Variable profiles, data quirks, charts and takeaways | TBD |
+| Una Qian| 260969447 | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges | TBD |
 | Bingqiang Zhao | 261350698 | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis | TBD |
 | Nat Suriyapanuwat | 261345843 | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation | TBD |
 
