@@ -488,26 +488,25 @@ The description-availability flag was removed because descriptions became almost
 git clone https://github.com/o-tunamonana/lending-club-default-prediction.git
 cd lending-club-default-prediction
 python -m pip install -r requirements.txt
-python -m pip install "scikit-learn>=1.4" scipy joblib threadpoolctl
 cd notebooks
 jupyter notebook
 ```
 
-Notebook 05 searches `HistGradientBoostingClassifier.max_features`, requiring scikit-learn 1.4 or later.
+Scikit-learn 1.4 or later is required for the gradient boosting parameter search in notebook 05.
 
 ### Execution
 
 Run notebooks from the `notebooks/` directory in numerical order.
 
-To regenerate the samples, download the raw CSV from Zenodo and place it at `data/LC_loans_granting_model_dataset.csv`. Existing sample files allow notebooks 02–05 to run without regenerating the split.
+To regenerate the samples, download the raw CSV from Zenodo and place it at:
 
-Notebook 04 currently reads `train.csv` from its working directory. When running from `notebooks/`, set its loading line to:
-
-```python
-X_train, y_train = load_split("../data/train.csv")
+```text
+data/LC_loans_granting_model_dataset.csv
 ```
 
-Notebook 05 saves intermediate results under `notebooks/results/` and figures under `notebooks/figures/`. Remove the relevant caches before recomputing after changes to code, data or parameters.
+The repository already includes `data/train.csv` and `data/test.csv`, so notebooks 02–05 can run without regenerating the split.
+
+Notebook 05 saves intermediate results under `notebooks/results/` and figures under `notebooks/figures/`. Remove the relevant cached results before recomputing after changes to code, data, or parameters.
 
 Sampling, shuffled CV, randomized search, and approval tie-breaking use seed **42**.
 
