@@ -528,7 +528,7 @@ Each modelling teammate will add lessons from actual experiments, including atte
 | TBD | TBD | TBD | TBD |
 | TBD | TBD | TBD | TBD |
 | Ensemble | Combine model strengths | Soft voting and stacking: +0.0006 CV ROC-AUC in 5/5 folds, no AP gain, below our one-SD rule | The models are 93-97% correlated, so it is not worth running three |
-| Shared v2 pipeline instead of notebook 04's preprocessing | Better features (log transforms, loan-to-income, state encoding) | +0.002 to +0.007 CV ROC-AUC for the three shortlisted models | Small but consistent gain, biggest for logistic regression |
+| Re-ran notebook 04's shortlist before tuning | Confirm tuning starts from the same models, pipeline and folds | Identical CV ROC-AUC (GB 0.6627, LR 0.6610, RF 0.6608, FICO 0.5904) | Notebook 05's "before tuning" scores are notebook 04's results |
 | `RandomizedSearchCV` on 3 models (75 configs) | Higher ROC-AUC from better settings | At most +0.0009 CV ROC-AUC (less than 1/5 of a fold SD) | Performance is limited by the data, not the model settings |
 | Training score cutoff applied to 2016 | A threshold that could be used in practice | Approved 80.07% of 2016 loans (target 80%) | The ranking is stable across years even though calibration is not |
 
