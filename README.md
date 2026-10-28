@@ -1,43 +1,52 @@
 # Loan Default Prediction: Balancing Approval and Risk
 
 **Course:** INSY 674  
-**Status:** Data split, EDA, preprocessing pipeline and baseline models completed; model comparison, fine-tuning and final evaluation in progress.  
+**Status:** Data preparation, EDA, model comparison, tuning, and final evaluation completed.  
 **Dataset:** [Lending Club loan dataset for granting models](https://zenodo.org/records/11295916)
 
 ## 1. Project Overview
 
-A lender wants to approve borrowers who can repay while keeping defaults under control. Approving more loans can increase lending volume, but it may also increase losses. Rejecting too many applications can turn away borrowers who would have repaid.
+Lending decisions involve two competing goals: approving enough loans to maintain lending volume while limiting defaults. A stricter policy can reduce risk, but it also rejects borrowers who would have repaid.
 
 Our main question is:
 
 > If we approve the lowest-risk loans, how does the default rate change as we approve more or fewer loans?
 
-We use information available at the application stage to predict default risk. We then compare models and explore the trade-off between approval rate and default rate among approved loans.
+We compare five model families against a FICO-only logistic regression baseline using application-time information. We evaluate model scores alongside approval rates and default rates among approved loans.
 
-This is a class project using historical issued loans. Its results do not establish that the model is ready for real lending decisions.
+### Main result
+
+On the 2016 test sample, approving the lowest-risk **80%** using tuned gradient boosting produced:
+
+- **19.50%** default rate among approved loans.
+- **21.56%** with FICO alone at the same approval rate.
+- **23.28%** across all test loans.
+
+At the same volume of **40,000 approved loans**, gradient boosting retained **827 fewer loans that ultimately defaulted** than the baseline.
+
+Risk ranking remained similar across CV and the later test cohort. However, the model underestimated 2016 default probabilities, making calibration an important remaining issue.
 
 ## 2. Business Objective and Problem Framing
 
 ### Business objective
 
-Identify lower-risk loans while retaining a meaningful share of lending volume.
+Reduce defaults among approved loans while retaining a meaningful share of lending volume.
 
-We will compare models at similar approval rates to see whether additional features and more complex models improve on a simple baseline.
+A policy that approves very few loans may achieve a low default rate without meeting lending-volume goals. We therefore compare models at matched approval rates and examine how risk changes as approval increases.
 
-We do not have a specific business risk target or a complete financial cost model. Therefore, we evaluate the approval–default trade-off rather than claiming to find the most profitable policy.
+We ask:
 
-### Who would use the model?
+- Does the model rank loan risk better than FICO alone?
+- At the same approval rate, does it retain a lower-risk group?
+- How many defaults are rejected, and how many fully paid loans are also rejected?
 
-- **Credit-risk analysts:** compare borrower risk and investigate model errors.
-- **Lending-policy teams:** evaluate different approval thresholds.
+Financial returns, funding costs, and recoveries are unavailable, so we measure the approval–default trade-off rather than profit.
 
-A possible workflow is:
+### Intended users and use
 
-1. Collect application information.
-2. Apply the fitted preprocessing pipeline.
-3. Generate a default-risk score.
-4. Apply a threshold selected using validation data.
-5. Review performance and outcomes over time.
+Credit-risk analysts could use scores to compare risk and investigate errors. Lending-policy teams could use approval curves to compare alternative policies.
+
+The workflow is to collect application information, apply the fitted pipeline, generate risk scores, and apply a policy selected using development data.
 
 ### Machine learning task
 
@@ -50,600 +59,464 @@ This is a **supervised binary classification** problem.
 - **Training:** offline, using historical loans.
 - **Output:** a score where higher values indicate higher default risk.
 
-If we interpret scores as default probabilities, we also need to assess calibration.
-
 ### Baseline
 
-Manual review and credit-score rules are common lending approaches. Our baseline is **FICO-only logistic regression**, which helps us test whether additional features improve predictions.
+Manual underwriting and credit-score rules are common lending approaches. We use **FICO-only logistic regression** as a simple benchmark for assessing the value of additional application features.
 
-This baseline does not reproduce Lending Club’s actual historical decision process.
+## 3. Team Members
 
-## 3. Team Roles and Responsibilities
-
-Each person documents their own work and presents for about two minutes. The project lead combines the sections into a consistent story.
-
-| Member | Student ID | Role | Main responsibilities | Cross-reviewer |
-|---|---|---|---|---|
-| Dora Zhuang | 261012351 | Project Lead & Storyteller | Business framing, metrics, README, assumptions, limitations, slides and presentation flow | TBD |
-| TBD | TBD | Data Exploration | Variable profiles, data quirks, charts and takeaways | TBD |
-| TBD | TBD | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges | TBD |
-| Bingqiang Zhao | 261350698 | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis | TBD |
-| Nat Suriyapanuwat | 261345843 | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation | TBD |
-
-### Shared rules
-
-- Use the same data split and shared preprocessing pipeline.
-- Fit learned preprocessing inside each training fold.
-- Keep test data out of EDA, feature selection, tuning, and threshold selection.
-- Assign a cross-reviewer to each part, especially the pipeline.
-- Push work regularly so teammates are not blocked.
-- Keep detailed methods in notebooks and summarize the main findings here.
-- Replace `TBD` with actual results before submission.
-- Clearly distinguish planned work from completed experiments.
+| Member | Student ID | Role | Main responsibilities |
+|---|---|---|---|
+| Dora Zhuang | 261012351 | Project Lead & Storyteller | Business framing, metrics, README, assumptions, limitations, slides and presentation flow |
+| Sirui Chen | 261342345 | Data Exploration | Variable profiles, data quirks, charts and takeaways |
+| Una Qian | 260969447 | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges |
+| Bingqiang Zhao | 261350698 | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis |
+| Nat Suriyapanuwat | 261345843 | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation |
 
 ## 4. Data Source and Split
 
-### Data source
+The [source dataset](https://doi.org/10.5281/zenodo.11295916) contains **1,347,681 loans and 15 columns**, covering origination years **2007–2018**. It retains fully paid and charged-off loans and excludes transitional outcomes.
 
-The [source dataset](https://doi.org/10.5281/zenodo.11295916) contains:
+Rejected applications are absent. Our analysis therefore concerns historical issued loans with resolved outcomes.
 
-- **1,347,681 loans**
-- **15 columns**
-- Loans issued between **2007 and 2018**
-- Application-time explanatory variables
-- Final outcomes of fully paid or charged off
+### Train/test split
 
-The dataset creators excluded loans in transitional states. Therefore, the data do not include every issued loan from each year.
-
-The dataset also contains only issued loans. We do not observe applicants who were rejected.
-
-### Completed train/test split
-
-The splitting notebook separates origination periods before creating stratified samples.
+We separate origination periods before EDA and fitted preprocessing, then take stratified samples.
 
 | Dataset | Issue years | Available pool | Sample size | Default rate |
 |---|---|---:|---:|---:|
 | Training / development | 2007–2015 | 829,347 | 150,000 | 18.46% |
-| Reserved test | 2016 | 293,057 | 50,000 | 23.28% |
+| Test | 2016 | 293,057 | 50,000 | 23.28% |
 
-- Sampling is stratified by `Default`.
-- Random seed: **42**.
-- Sampled training and test IDs are checked for overlap.
-- EDA uses the training sample.
+Sampling is stratified by `Default`, with seed **42**. Sampled train and test IDs do not overlap. EDA uses the training sample.
 
-Sampling keeps model comparisons manageable within our project timeline while approximately preserving each period’s default rate.
+Sampling makes repeated comparisons manageable while approximately preserving each period’s default prevalence.
 
 ### Why split by time?
 
-Our intended use is to learn from older loans and score newer applications. A time split follows this direction and allows us to evaluate performance on a later cohort.
+The intended task is to learn from older loans and score newer applications. The 2016 test cohort provides a later-period comparison, with observed default prevalence increasing from **18.46%** to **23.28%**.
 
 ### Why exclude 2017–2018?
 
-Only resolved loans are included in the source dataset. Recent cohorts may contain a selective subset of loans that reached a final outcome before data collection.
+Only resolved loans remain in the dataset, so recent cohorts may overrepresent loans that reached a final outcome quickly. We exclude these years to reduce this outcome-selection concern.
 
-Excluding these years reduces this concern, but does not eliminate outcome-selection bias.
+### Evaluation boundaries
 
-### Test-set disclosure
+Aggregate test prevalence was inspected in the split notebook, and the pipeline notebook documents test-period DTI anomalies. The test sample was therefore not completely unseen during development.
 
-The split notebook already displayed the test set’s overall default rate. We therefore describe it as a reserved test set whose aggregate label distribution has been inspected.
+Model fitting, hyperparameter search, and approval-fraction selection use training data. Notebook 05 reports that its model and policy choices were fixed before final test evaluation.
 
-Individual test observations and model results must not be used for feature selection, tuning, or threshold selection.
-
-### Timing limitation
-
-We do not know when each final loan outcome became available. Some loans issued before 2016 may have resolved after 2016.
-
-Our split is therefore a retrospective comparison across origination periods, rather than a complete simulation of information available at a historical deployment date.
+Outcome-availability dates are missing. Some earlier loans may have resolved after 2016, so the split compares origination cohorts rather than fully reconstructing historically available training labels.
 
 ## 5. Exploratory Data Analysis
 
-**Owner: Data Exploration teammate**
-
-The EDA notebook profiles each variable’s:
-
-- Type
-- Missing values
-- Noise and outliers
-- Distribution
-- Potential usefulness
-
-All EDA uses the training sample.
+[Notebook 02](notebooks/02_eda.ipynb) profiles each variable’s type, missingness, unusual values, distribution, and usefulness.
 
 ### Variable summary
 
-| Variable | Meaning | Main finding / planned treatment |
+| Variable | Meaning | Treatment |
 |---|---|---|
-| `id` | Loan identifier | Check overlap; exclude from predictors |
-| `issue_d` | Issue month and year | Use for splitting and yearly analysis |
-| `revenue` | Self-reported annual income | Strongly skewed; evaluate clipping and log transformation |
-| `dti_n` | Monthly debt-to-income ratio, excluding mortgage, as defined by the source | Retain; evaluate extreme values |
-| `loan_amnt` | Requested loan amount | Retain; use in loan-to-income |
-| `fico_n` | Midpoint of reported FICO range | Retain; use in the baseline |
-| `experience_c` | Borrower-experience indicator | Nearly constant; exclude |
-| `emp_length` | Employment length | Preserve information from `NI` |
-| `purpose` | Loan purpose | Encode; review rare categories |
-| `home_ownership_n` | Housing status | Encode; review rare categories |
-| `addr_state` | State of residence | Review sparse categories and geographic dependence |
-| `zip_code` | Partially masked ZIP code | Exclude from baseline |
-| `title` | Borrower-provided loan title | Exclude from structured baseline |
-| `desc` | Borrower-provided loan description | Exclude because of missingness and changing availability |
+| `id` | Loan identifier | Overlap checks; excluded from predictors |
+| `issue_d` | Issue month and year | Temporal splitting and cohort analysis |
+| `revenue` | Self-reported annual income | Log transformation and standardization |
+| `dti_n` | Monthly debt-to-income ratio, excluding mortgage, as defined by the source | Cleaning, median imputation and standardization |
+| `loan_amnt` | Requested loan amount | Log transformation and standardization |
+| `fico_n` | Midpoint of reported FICO range | Median imputation and standardization |
+| `experience_c` | Borrower-experience indicator | Excluded because it is nearly constant |
+| `emp_length` | Employment length | Numeric years, imputation and missingness indicator |
+| `purpose` | Loan purpose | One-hot encoding with rare-category grouping |
+| `home_ownership_n` | Housing status | One-hot encoding with rare-category grouping |
+| `addr_state` | State of residence | Smoothed target encoding with cross-fitting |
+| `zip_code` | Partially masked ZIP code | Excluded |
+| `title` | Borrower-provided loan title | Excluded because of high cardinality and overlap with purpose |
+| `desc` | Borrower-provided loan description | Excluded because of missingness and changing availability |
 | `Default` | Charged off or fully paid | Target |
 
 ### Main findings
 
-- About **18.5%** of training loans defaulted.
+- Approximately **18.5%** of training loans defaulted.
 - Income has skew around **46.4** and a maximum of **USD 9.5 million**.
-- A log transformation substantially reduces income skew.
-- About **5.2%** of borrowers have `emp_length = NI`.
-- The `NI` group has an observed default rate of approximately **23.7%**.
+- Log transformation reduces income skew to approximately **0.18**.
+- About **5.2%** have `emp_length = NI`, with an observed default rate of approximately **23.7%**.
 - Only **5 of 150,000** training observations have `experience_c = 0`.
 - ZIP code has **879 categories**; approximately **20%** have fewer than 30 observations.
-- Loan descriptions are approximately **86% missing** and are almost absent in 2015.
-- Only **90 training loans** have FICO below 660, so evidence for this population is limited.
-
-These statistics come from the supplied notebook outputs.
+- Loan descriptions are approximately **86% missing** and almost absent in 2015.
+- Only **90 training observations** have FICO below 660.
 
 ### Charts and takeaways
 
-| Chart | Takeaway from training EDA |
+| Chart | Main takeaway |
 |---|---|
-| Default rate by FICO | Higher FICO bands generally have lower default rates; the lowest band has very few observations |
+| Default rate by FICO | Higher FICO bands generally have lower default rates |
 | Default rate by purpose | Small-business loans have higher observed default rates than car loans |
 | Default rate by home ownership | Renters have higher observed default rates than mortgage holders |
-| Default rate by year | Rates vary over time and rise in the later training years |
+| Default rate by year | Rates vary over time and rise in later training years |
 | Default rate by loan-to-income | Higher ratio groups have higher observed default rates |
 
-Each chart should include readable labels, relevant group counts, and a one-line takeaway.
+Individual numeric rank correlations with default are weak. We therefore test combinations of features and evaluate their contribution through validation.
 
-These relationships are descriptive. They do not establish causation, and weak correlations do not prove that the data are free of leakage.
+### Useful additional data
 
-### Additional data that would help
-
-| Additional data | Why it would help |
+| Additional data | Purpose |
 |---|---|
-| Income-verification information | Assess reporting reliability |
-| Dates when outcomes became known | Create a more realistic historical evaluation |
+| Income verification | Assess reporting reliability |
+| Dates when outcomes became known | Reconstruct historically available labels |
 | Recent cohorts with sufficient follow-up | Assess current relevance |
-| Loan returns, funding costs, and recoveries | Evaluate financial value |
+| Loan returns, costs and recoveries | Evaluate financial value |
 | Broader application records | Understand coverage beyond approved applicants |
-| Appropriate protected-group information | Support a reviewed subgroup fairness assessment |
+| Appropriate protected-group information | Assess approval and error disparities directly |
 
-Application records alone would not reveal how rejected applicants would have repaid. That question would still require careful treatment.
+## 6. Preprocessing and Feature Engineering
 
-## 6. Data Preparation and Shared Pipeline
+[Notebook 03](notebooks/03_pipeline.ipynb) explains the shared pipeline in [preprocessing.py](notebooks/preprocessing.py).
 
-**Owner: Data Preparation & Pipeline teammate / Repo Owner**
+Full models use eight original application inputs and the engineered `loan_to_income` feature.
 
-Everyone will reuse a shared sklearn preprocessing pipeline. Model-specific versions may differ where scaling or encoding requirements differ, but comparisons should use consistent data and validation rules.
+### Cleaning
 
-The cross-reviewer will check that validation and test information do not enter training.
+- Convert employment length to numeric years from 0 to 10.
+- Map `NI` to missing and preserve missingness through an indicator.
+- Treat DTI equal to 999 as missing.
+- Cap DTI at 100.
+- Calculate `loan_to_income = loan_amnt / revenue`.
+- Drop identifiers, issue date, experience indicator, ZIP code, title and description.
 
-### Planned steps
+The source does not explain DTI equal to 999. Treating it as missing is an explicit assumption. The training sample has no such values and no DTI above 100; these rules handle later-period observations.
 
-1. Drop identifiers and excluded features.
-2. Handle missing and unusual values.
-3. Engineer candidate features.
-4. Encode categorical variables.
-5. Scale numeric variables for models that need it.
-6. Fit the model.
+### Transformations
 
-### Candidate features and transformations
+| Group | Features | Transformation |
+|---|---|---|
+| Numeric | FICO, DTI, employment length | Median imputation with missing indicators, then standardization |
+| Skewed numeric | Income, loan amount, loan-to-income | `log(1 + x)`, then standardization |
+| Categorical | Purpose, housing status | One-hot encoding; categories with fewer than 500 observations grouped as infrequent |
+| Geographic | State | Target encoding with smoothing of 100 and internal cross-fitting |
 
-| Feature / transformation | Reason |
-|---|---|
-| `loan_to_income = loan_amnt / revenue` | Capture requested loan size relative to annual income |
-| Log income | Reduce strong right skew |
-| FICO bands | Compare a grouped representation with continuous FICO |
-| Employment missingness category or flag | Preserve information from `NI` |
-| Income and DTI clipping | Evaluate sensitivity to extreme observations |
-| Rare-category grouping | Avoid unstable estimates from very small categories |
+Income percentile clipping and FICO bands were not included in the final shared pipeline.
 
-Loan-to-income is not a monthly repayment burden or a complete affordability measure. Invalid or nonpositive income must be handled explicitly.
+The full-training pipeline check produces **24 numeric columns**, with no remaining missing values.
 
-### DTI assumption
+### Leakage control
 
-The supplied training EDA reports a maximum DTI of **83.4**. It does not verify that 999 appears in the raw file or is an official missing-value code.
+Learned preprocessing is fitted inside each CV training fold. State target encoding uses internal cross-fitting so a row’s own target does not determine its training encoding.
 
-If 999 appears during later processing, investigate its meaning and document any assumption. Values above 100 should not automatically be treated as impossible.
-
-### Leakage prevention
-
-The following must be fitted using each training fold only:
-
-- Imputation values
-- Clipping limits
-- Scaling parameters
-- Category vocabularies
-- Rare-category grouping rules
-- Any feature-selection procedure
-
-If target encoding is used, it must also avoid using a row’s own target to encode that row.
-
-**Final implemented pipeline:** TBD.
+The FICO-only baseline uses a separate pipeline with FICO imputation and scaling.
 
 ## 7. Evaluation Metrics
 
 ### ROC-AUC
 
-ROC-AUC measures how well the model ranks defaulted loans above fully paid loans across thresholds.
+ROC-AUC measures how well a model ranks defaulted loans above fully paid loans. It is the primary metric for model comparison and hyperparameter selection.
 
-We use it as the primary ranking metric. It does not determine an approval threshold or show whether predicted probabilities are calibrated.
+### Average Precision
 
-### Precision–recall performance
+We report **Average Precision (AP)** using `average_precision_score`, alongside precision–recall analysis.
 
-We also report **Average Precision (AP)** using:
+AP focuses on default identification in an imbalanced dataset. The prevalence reference is **18.46%** in training and **23.28%** in testing. AP differs from trapezoidal PR-AUC, so we label it explicitly.
 
-`sklearn.metrics.average_precision_score`
-
-AP summarizes precision–recall performance for the default class, which is the minority class. We will also show a precision–recall curve.
-
-For consistency, we label the number **AP**. Its calculation differs from trapezoidal PR-AUC.
-
-The no-skill precision reference is the default prevalence of the evaluated set, so prevalence should be considered when comparing periods.
-
-### Approval rate versus default rate
-
-For a default-risk score, approve a loan when its score is at or below a selected threshold.
+### Approval and default rates
 
 `Approval rate = approved loans / evaluated loans`
 
 `Approved-loan default rate = defaults among approved loans / approved loans`
 
-If no loans are approved, the approved-loan default rate is undefined.
-
-These measures connect model performance to our business question. At a similar approval rate, a useful model should retain a lower-risk group than the baseline.
-
-Because the dataset contains historical issued loans, “approval rate” means the fraction retained from that population. It does not estimate approval rates for all applicants.
-
-### Why not accuracy alone?
-
-Predicting every training loan as fully paid would achieve approximately **81.5% accuracy** while identifying no defaults.
+Models are compared at the same approval rate, so lower risk is not achieved simply by approving fewer loans. Approval here means retaining loans from the historical issued-loan sample.
 
 ### Supporting diagnostics
 
-We will also examine:
+We examine confusion matrices, default precision and recall, Brier score, and calibration.
 
-- Confusion matrices at validation-selected thresholds
-- Default precision and recall
-- Approved counts
-- Calibration if scores are interpreted as probabilities
+Accuracy alone is insufficient: predicting every training loan as fully paid achieves approximately **81.5% accuracy** while identifying no defaults.
 
-## 8. Baseline, Model Comparison and Shortlist
+## 8. Model Comparison and Shortlist
 
-**Owner: Bingqiang Zhao**  
-**Status: Completed**
+[Notebook 04](notebooks/04_modeling_baseline.ipynb) compares five model families against the FICO-only baseline.
 
-### Models
+All models use **stratified five-fold CV**, with shuffling and seed **42**. Learned preprocessing is fitted separately within each fold. Results are mean ± sample standard deviation.
 
-Build a FICO-only logistic regression baseline, then compare 4–5 model families, such as:
+| Model | CV ROC-AUC | CV AP |
+|---|---|---|
+| Gradient boosting | 0.6627 ± 0.0047 | 0.3007 ± 0.0084 |
+| Logistic regression | 0.6610 ± 0.0047 | 0.2965 ± 0.0083 |
+| Random forest | 0.6608 ± 0.0041 | 0.2970 ± 0.0065 |
+| Extra Trees | 0.6554 ± 0.0039 | 0.2930 ± 0.0087 |
+| Decision tree | 0.6420 ± 0.0044 | 0.2736 ± 0.0057 |
+| FICO-only baseline | 0.5904 ± 0.0043 | 0.2254 ± 0.0028 |
 
-- Logistic regression
-- Decision tree
-- Random forest
-- Gradient boosting
-- kNN
+All multivariable models outperform the FICO-only baseline.
 
-The final set should reflect available time and computing resources.
+We shortlisted:
 
-### Cross-validation plan
+1. **Gradient boosting:** highest mean ROC-AUC and AP.
+2. **Logistic regression:** similar performance with a simpler model.
+3. **Random forest:** a competitive alternative ensemble approach.
 
-Our team plan uses **stratified 5-fold CV within the training set**.
+The small differences between these candidates motivate examining tuning gains and complexity.
 
-- Use the same folds across models.
-- Use shuffling with random seed **42**.
-- Fit learned preprocessing separately within each fold.
-- Report ROC-AUC and AP as **mean ± standard deviation**.
+Shuffled CV mixes origination years. The separate 2016 test provides the later-cohort evaluation.
 
-Stratified CV keeps class proportions similar across folds, but it mixes origination years. Its results do not directly measure future-cohort performance.
+## 9. Feature Importance and Error Analysis
 
-The separate 2016 test set provides the later-period comparison. A chronological validation check would provide additional evidence if time allows.
+### Important variables
 
-### Model comparison results
+Held-out permutation importance uses up to 3,000 observations from the first validation fold and five permutations per feature.
 
-| Model | ROC-AUC (mean ± sample std) | Mean AP | Mean Brier |
-|---|---:|---:|---:|
-| Gradient boosting | 0.6627 ± 0.0047 | 0.3007 | 0.1428 |
-| Logistic regression | 0.6610 ± 0.0047 | 0.2965 | 0.1430 |
-| Random forest | 0.6608 ± 0.0041 | 0.2970 | 0.1431 |
-| Extra Trees | 0.6554 ± 0.0039 | 0.2930 | 0.1447 |
-| Decision tree | 0.6420 ± 0.0044 | 0.2736 | 0.1448 |
-| FICO-only baseline | 0.5904 ± 0.0043 | 0.2254 | 0.1481 |
+For gradient boosting:
 
-The course rubric asks for a shortlist of **3–5 promising candidates**. We will document this shortlist, then prioritize the strongest **2–3** for detailed tuning, following our team plan.
+| Original input | Mean ROC-AUC reduction after permutation |
+|---|---:|
+| FICO | 0.0673 |
+| Loan amount | 0.0657 |
+| Income | 0.0340 |
+| DTI | 0.0264 |
 
-Selection should consider performance, stability, runtime, interpretability, and error patterns.
+Shuffling loan amount or income also changes the derived loan-to-income feature. These values measure predictive contribution through the pipeline, rather than causal effects.
 
-**Shortlist:** Gradient boosting, Logistic regression, Random forest. Selection uses mean ROC-AUC, with AP as an exact-tie breaker; other metrics and errors support review rather than automatic selection. Fold-to-fold standard deviations are not confidence intervals or a significance test.
+### Default threshold
 
-For **Gradient boosting**, the four largest mean held-out permutation AUC reductions were `fico_n` (0.0673), `loan_amnt` (0.0657), `revenue` (0.0340), `dti_n` (0.0264). Importance is measured on original inputs; shuffling loan amount or income also changes the derived loan-to-income ratio. These values do not establish causation.
+At the preliminary threshold of **0.50**, untuned gradient boosting identified only **82 of 27,684** training defaults in out-of-fold predictions.
 
-At the initial **0.50 threshold**, Gradient boosting detected **82 of 27,684 defaults** and missed **27,602** (FNR **99.70%**), with **73** false positives. Review recall and conditional error rates before treating this as an approval rule; a high accuracy can conceal missed defaults in an imbalanced sample. The segment tables above show the actual group counts and error rates.
+Most scores fall below 0.50. This produces high accuracy but very low default recall, motivating a policy based on approval volume.
 
-These results replace those from the earlier independent preprocessing recipe; the feature set and transformations have changed. The shared module is used unchanged. Hyperparameter tuning and cost-based threshold selection remain future steps using training data only, followed by final evaluation on the untouched 2016 sample. No final estimator has yet been refitted on all training rows.
+### Business errors
 
+With default as the positive class:
 
-## 9. Feature Importance, Error Analysis and Iteration
+- **False approval:** approve a loan that defaults — false negative.
+- **False rejection:** reject a loan that repays — false positive.
 
-**Owner: Baseline & Shortlist teammate**  
-**Status: Pending model predictions**
+Notebook 04 examines errors across FICO, predicted risk, housing, purpose, employment information, and other loan characteristics. Verified income and more detailed repayment obligations would help investigate individual errors.
 
-### Feature importance
+## 10. Hyperparameter Tuning and Ensembles
 
-Use suitable methods to explain which variables each model relies on.
+[Notebook 05](notebooks/05_tuning_and_final_evaluation.ipynb) tunes the three shortlisted models using `RandomizedSearchCV` and the same five-fold design.
 
-Feature importance describes model behaviour. It does not establish that changing a feature would change a borrower’s outcome.
+### Search budgets
 
-### Error analysis
+| Model | Configurations | Main parameters |
+|---|---:|---|
+| Gradient boosting | 40 | Learning rate, iterations, leaf count, minimum leaf size, regularization, feature fraction |
+| Random forest | 20 | Tree count, depth, minimum leaf size, feature fraction |
+| Logistic regression | 15 | Regularization strength and L1/L2 penalty |
 
-With default defined as the positive class:
+ROC-AUC determines the selected configuration; AP is also recorded. Randomized search explores broad ranges within a manageable number of fits.
 
-- **False approval:** approve a loan that defaults — a false negative.
-- **False rejection:** reject a loan that repays — a false positive.
+### Tuning results
 
-We will examine errors by:
+| Model | Untuned CV ROC-AUC | Tuned CV ROC-AUC | Tuned AP |
+|---|---:|---|---:|
+| Gradient boosting | 0.6627 | 0.6636 ± 0.0046 | 0.3012 |
+| Random forest | 0.6608 | 0.6612 ± 0.0039 | 0.2973 |
+| Logistic regression | 0.6610 | 0.6610 ± 0.0047 | 0.2966 |
 
-- FICO range
-- DTI
-- Loan-to-income
-- Loan purpose
-- Employment-information availability
-- Origination year
+The largest tuning gain is approximately **0.0009 ROC-AUC**. Search adds little compared with the improvement from using more information than FICO alone.
 
-Report group sizes and avoid strong conclusions from very small groups.
+### Final gradient boosting configuration
 
-We will also discuss what additional information a human reviewer might have needed, such as verified income or more detailed repayment obligations.
+The final estimator is `HistGradientBoostingClassifier`, with settings rounded here for readability:
 
-### Feature and preprocessing experiments
+| Parameter | Value |
+|---|---:|
+| `learning_rate` | 0.0249 |
+| `max_iter` | 510 |
+| `max_leaf_nodes` | 15 |
+| `min_samples_leaf` | 337 |
+| `l2_regularization` | 0.0257 |
+| `max_features` | 0.5823 |
 
-| Experiment | Why we tried it | Validation result | Decision |
-|---|---|---|---|
-| Income transformation | Reduce sensitivity to skew | TBD | TBD |
-| Loan-to-income | Capture relative requested exposure | TBD | TBD |
-| FICO bands | Test a different representation | TBD | TBD |
-| Employment missingness treatment | Preserve missingness information | TBD | TBD |
-| State inclusion versus exclusion | Assess predictive value and geographic dependence | TBD | TBD |
+Exact sampled settings are saved by notebook 05. Early stopping can stop fitting before the maximum iteration count.
 
-## 10. Fine-tuning and Ensemble 
-(`05_tuning_and_final_evaluation.ipynb`)
+### Ensembles
 
-### Hyperparameter tuning
+We tested soft voting and stacking with a logistic-regression meta-model and internal five-fold CV.
 
-- **Method:** `RandomizedSearchCV`
-- **CV:** stratified 5-fold, shuffle, seed 42 (same folds as notebook 04)
-- **Search seed:** 42
-- **Primary metric:** ROC-AUC, with AP recorded as well
-- **Preprocessing:** shared v2 pipeline, refitted inside every fold
+Both achieved approximately **0.6642 CV ROC-AUC**, versus **0.6636** for tuned gradient boosting, without an AP improvement. Component predictions were highly correlated, approximately **0.93–0.97**.
 
-Tuning made very little difference. The biggest gain was +0.0009 ROC-AUC, about a fifth of the fold standard deviation. Many different gradient boosting settings all score between 0.663 and 0.664, so we think performance is limited by the information in the application features rather than by the hyperparameters.
+We retained gradient boosting because the small gain did not justify running three models. The notebook required a gain larger than one fold standard deviation as a practical complexity rule, not a significance test.
 
-### Ensemble
+## 11. Approval Policy and Final Test Results
 
-We tried a soft-voting ensemble (the average of the three tuned models) and a stacking ensemble (logistic regression on top, inner 5-fold CV). Before running them, we agreed to only use an ensemble if it beat the best single model by more than one fold standard deviation.
-
-Both ensembles were better than tuned gradient boosting in all 5 folds, but only by +0.0006 (fold SD = 0.0046), and AP did not improve. The three models' predictions are 93-97% correlated, so averaging them adds very little. We kept tuned gradient boosting as the final model.
-
-| Candidate | Search method / budget | Best settings | Validation result (CV ROC-AUC, mean ± SD; AP) | Decision |
-|---|---|---|---|---|
-| Gradient boosting (`HistGradientBoostingClassifier`) | Random search, 40 configs: learning_rate 0.01-0.2, max_iter 100-800, max_leaf_nodes 7-63, min_samples_leaf 20-500, l2_regularization 0.001-10, max_features 0.5-1.0 | learning_rate 0.025, max_iter 510 (with early stopping), max_leaf_nodes 15, min_samples_leaf 337, l2 0.026, max_features 0.58 | 0.6636 ± 0.0046 (untuned 0.6627); AP 0.3012 | **Final model** |
-| Random forest | Random search, 20 configs: n_estimators 200-500, max_depth 8-24 or none, min_samples_leaf 5-200, max_features sqrt/0.3/0.5 | 258 trees, max_depth 16, min_samples_leaf 53, max_features sqrt | 0.6612 ± 0.0039 (untuned 0.6608); AP 0.2973 | Not selected |
-| Logistic regression | Random search, 15 configs: C 0.001-10, penalty l1/l2 | C 2.14, l2 | 0.6610 ± 0.0047 (untuned 0.6610); AP 0.2966 | Not selected (simplest alternative) |
-| Ensemble | Soft voting (equal weights) and stacking (learned weights about equal: GB 2.45, RF 1.97, LR 2.40), same folds | n/a | Both 0.6642 ± 0.0044; AP 0.3011 | Not used: gain below one fold SD |
-
-## 11. Threshold Selection and Final Evaluation
 ### Policy selection
 
-We chose the policy using out-of-fold predictions on the training set, before opening the test set.
+Using out-of-fold training predictions, we selected **80% approval** before final test evaluation.
 
-- **Policy:** approve the safest **80%** of loans by predicted default risk. The full curve from 10% to 100% is also reported.
-- **Ties:** loans are sorted by score, with ties broken in random order (seed 42). This matters for the FICO baseline, which only has a few dozen different scores.
-- **Score cutoff at 80% on the training set:** predicted default probability ≤ 0.2565 for the final model (≤ 0.2281 for the FICO baseline).
-- **Training OOF result:** at 80% approval, the default rate among approved loans is 15.06% with the final model vs 17.08% with FICO (18.46% if everyone is approved). The probabilities were well calibrated on the training data: every decile was within 0.7 points, and the Brier score was 0.1427 vs 0.1481 for FICO.
+We evaluated:
 
-### Final evaluation procedure
+1. **Fixed approval fraction:** approve the lowest-risk 80% of the scored batch.
+2. **Fixed training cutoff:** apply the threshold derived from training predictions.
 
-1. Chose the model and its settings with CV on the training set (section 10).
-2. Chose the approval policy with the training OOF predictions.
-3. Fixed the preprocessing, model settings and policy.
-4. Refit the final model and the baseline on all 150,000 training loans.
-5. Scored the 2016 test set (50,000 loans) **once**. The predictions were saved, and nothing was changed after seeing the results.
+Score ties in the fixed-fraction policy are broken randomly with seed **42**, particularly important for the FICO baseline.
 
-### Predictive results
+At 80% training approval, approved-loan default rates were **15.06%** for gradient boosting and **17.08%** for FICO. Training-derived cutoffs were **0.2565** and **0.2281**, respectively.
 
-| Model | Test ROC-AUC | Test AP | Main conclusion |
-|---|---|---|---|
-| FICO-only baseline | 0.5943 | 0.2822 | Weak ranking, close to its CV score (0.5904) |
-| Final model (tuned gradient boosting) | 0.6639 | 0.3598 | Better ranking; the test score matches CV (0.6636), so no sign of overfitting |
+The final model and baseline were fitted on all 150,000 training loans. Notebook 05 reports that predictions were saved after final test scoring and no further tuning followed.
 
-The AP of a random model on the test set is 0.2328 (the test default rate). Using 1,000 bootstrap samples of the test set, the model beats the baseline by +0.070 ROC-AUC (95% interval 0.064 to 0.076) and +0.078 AP (0.071 to 0.085).
+### Predictive performance
 
-### Business results
+| Model | Test ROC-AUC | Test AP | Test Brier |
+|---|---:|---:|---:|
+| FICO-only baseline | 0.5943 | 0.2822 | 0.1774 |
+| Tuned gradient boosting | 0.6639 | 0.3598 | 0.1706 |
 
-| Policy | Test approval rate | Default rate among approved loans | Approved count |
-|---|---|---|---|
-| Retain all historical test loans | 100% | 23.28% | 50,000 |
-| Baseline policy selected on validation (safest 80%) | 80.00% | 21.56% | 40,000 |
-| Final policy selected on validation (safest 80%) | 80.00% | 19.50% | 40,000 |
-| *Extra:* baseline with training cutoff ≤ 0.2281 | 81.24% | 21.70% | 40,621 |
-| *Extra:* final model with training cutoff ≤ 0.2565 | 80.07% | 19.50% | 40,036 |
+Gradient boosting improves test ROC-AUC by approximately **0.0696**. Its test score is close to its **0.6636** tuned CV result, showing similar ranking performance on the later cohort.
 
-The retain-all row is a descriptive reference, not a model result.
+### Approval and default rates
 
-> At an approval rate of **80%**, the final model retained loans with an observed default rate of **19.50%**, compared with **21.56%** for the baseline at the same approval rate and **23.28%** if every 2016 test loan is retained. The difference from the baseline is -2.1 points (95% bootstrap interval -2.37 to -1.85).
+| Policy | Approval rate | Approved loans | Approved-loan default rate |
+|---|---:|---:|---:|
+| Retain all test loans | 100.00% | 50,000 | 23.28% |
+| FICO-only, safest 80% | 80.00% | 40,000 | 21.56% |
+| Gradient boosting, safest 80% | 80.00% | 40,000 | 19.50% |
+| FICO-only, training cutoff | 81.24% | 40,621 | 21.70% |
+| Gradient boosting, training cutoff | 80.07% | 40,036 | 19.50% |
 
-At other approval rates on the test set, the safest 50% gives 14.86% (model) vs 18.40% (FICO), and the safest 90% gives 21.08% vs 22.48%. The model is better at every approval rate from 10% to 90%.
+At matched 80% approval, gradient boosting lowers the default rate by approximately **2.07 percentage points** relative to FICO alone.
 
-**Errors at 80% approval (test set), with default as the positive class:**
+At 50% approval, test default rates are **14.86%** for gradient boosting versus **18.40%** for FICO. At 90%, they are **21.08%** versus **22.48%**. Gradient boosting has lower observed default rates at each evaluated approval fraction from 10% to 90%.
 
-| | Final model | FICO baseline |
+### Errors at 80% approval
+
+| Outcome | Gradient boosting | FICO-only |
+|---|---:|---:|
+| Approved and fully paid | 32,201 | 31,374 |
+| Approved and defaulted | 7,799 | 8,626 |
+| Rejected and fully paid | 6,158 | 6,985 |
+| Rejected and defaulted | 3,842 | 3,015 |
+
+Gradient boosting rejects **33.0%** of defaults, compared with **25.9%** for FICO.
+
+However, **61.58%** of rejected loans were fully paid. Better ranking reduces errors relative to the baseline but still excludes many borrowers who repay.
+
+### Bootstrap uncertainty
+
+Notebook 05 uses **1,000 paired bootstrap resamples** of the test sample. The 95% percentile interval for the approved-loan default-rate difference, gradient boosting minus FICO at 80% approval, is approximately **−2.37 to −1.85 percentage points**.
+
+This describes uncertainty within the observed test sample, not retraining variability or future changes in lending conditions.
+
+## 12. Calibration and Temporal Change
+
+Ranking remained stable, but calibration changed.
+
+On training out-of-fold predictions, predicted and observed default rates were within approximately **0.7 percentage points** across ten risk groups.
+
+On the 2016 test sample:
+
+- Mean predicted default probability: **18.49%**
+- Actual default prevalence: **23.28%**
+
+The model underestimated defaults across all ten test risk groups.
+
+Risk ranking and probability accuracy therefore need separate evaluation. The model identifies relatively safer loans, while its numerical probabilities understate the later cohort’s default level.
+
+A next step is to assess recalibration using a recent labelled validation cohort, followed by evaluation on another untouched period.
+
+## 13. Fairness and ZIP-Code Exclusion
+
+ZIP code is excluded for statistical and ethical reasons.
+
+### Sparse categories
+
+Training contains **879 ZIP-code categories**, with approximately **20%** represented by fewer than 30 loans. Small groups can produce unstable estimates.
+
+### Geographic proxies
+
+Residential geography can act as a proxy for race or ethnicity. Historical redlining illustrates how neighbourhood-based lending restrictions can exclude communities from credit.
+
+We remove ZIP code to reduce dependence on detailed residential location when assessing individual borrowers.
+
+State remains through smoothed target encoding. A useful extension is to compare model performance and approval patterns with and without state.
+
+Race and ethnicity labels are unavailable, so racial approval and error disparities cannot be measured directly. ZIP-code exclusion addresses one feature choice; it does not establish fair model outcomes.
+
+## 14. What Worked and What Did Not
+
+### What worked
+
+- **Additional application features:** multivariable models improved substantially on FICO alone.
+- **Approval-based evaluation:** matched approval rates connected ranking performance to a lending decision.
+- **Later-cohort ranking:** test ROC-AUC remained close to CV performance.
+- **Missingness handling:** the pipeline retained employment-information missingness identified in EDA.
+
+### What added little or did not transfer
+
+| Attempt / finding | Result | Lesson |
 |---|---|---|
-| False approvals (approved, then defaulted) | 7,799 | 8,626 |
-| False rejections (rejected, would have repaid) | 6,158 | 6,985 |
-| Defaults caught (recall) | 3,842 (33.0%) | 3,015 (25.9%) |
-| Rejected loans that defaulted (precision) | 38.4% | 30.2% |
+| Default threshold of 0.50 | Very low default recall | Thresholds should reflect the lending objective |
+| Hyperparameter search | Largest ROC-AUC gain below 0.001 | Broader tuning produced limited gains |
+| Soft voting and stacking | Approximately +0.0006 ROC-AUC; no AP gain | Correlated models added little diversity |
+| Loan-to-income | Notebook 03 reports similar boosting performance with and without it | A strong EDA relationship may duplicate existing information |
+| Training-period calibration | Underestimated 2016 defaults | Stable ranking does not imply stable probabilities |
 
-**Calibration in 2016.** For the 2016 loans the model predicts an average default rate of 18.5%, but 23.3% actually defaulted, and most deciles are 3-7 points too low. The ranking still works, so both the rank-based policy and the training cutoff hold up (80.07% approved). The scores should not be read as real default probabilities for a new year unless they are recalibrated on recent loans.
+The description-availability flag was removed because descriptions became almost absent in later years. Income percentile clipping and FICO bands were not included in the final pipeline.
 
-## 12. Why We Exclude ZIP Code
+## 15. Assumptions and Limitations
 
-We exclude ZIP code from the baseline for technical and ethical reasons.
-
-### Technical reason
-
-Many ZIP-code categories contain few observations. This can produce unstable estimates and increase overfitting risk.
-
-### Ethical reason
-
-Residential location can act as a proxy for race or ethnicity. Historical redlining shows how lending restrictions based on neighbourhood characteristics can harm communities.
-
-Dropping ZIP code reduces reliance on detailed residential geography.
-
-### Remaining limitations
-
-Removing ZIP code does not guarantee fairness or legal compliance. State, housing, income, and credit history may also contain proxy information.
-
-We do not have direct race or ethnicity labels, so we cannot claim to have measured racial fairness.
-
-Real use would require further review. We also do not claim that every use of ZIP code is automatically unlawful.
-
-## 13. What Worked and What Did Not
-
-### What we know so far
-
-- Stratified sampling approximately preserved each selected period’s default rate.
-- EDA identified important issues, including `NI`, skewed income, and sparse categories.
-- Log transformation reduced income skew, but its effect on model performance remains untested.
-
-### Design choices
-
-We ruled out accuracy as the only metric and excluded ZIP code, descriptions, titles, and the nearly constant experience feature from the structured baseline.
-
-These are design choices, not evidence that alternative trained models performed worse.
-
-### Modelling lessons
-
-Each modelling teammate will add lessons from actual experiments, including attempts that did not improve validation performance.
-
-| Attempt | Expected benefit | Observed result | What we learned |
-|---|---|---|---|
-| TBD | TBD | TBD | TBD |
-| TBD | TBD | TBD | TBD |
-| Ensemble | Combine model strengths | Soft voting and stacking: +0.0006 CV ROC-AUC in 5/5 folds, no AP gain, below our one-SD rule | The models are 93-97% correlated, so it is not worth running three |
-| Shared v2 pipeline instead of notebook 04's preprocessing | Better features (log transforms, loan-to-income, state encoding) | +0.002 to +0.007 CV ROC-AUC for the three shortlisted models | Small but consistent gain, biggest for logistic regression |
-| `RandomizedSearchCV` on 3 models (75 configs) | Higher ROC-AUC from better settings | At most +0.0009 CV ROC-AUC (less than 1/5 of a fold SD) | Performance is limited by the data, not the model settings |
-| Training score cutoff applied to 2016 | A threshold that could be used in practice | Approved 80.07% of 2016 loans (target 80%) | The ranking is stable across years even though calibration is not |
-
-We will not describe an approach as unsuccessful without supporting results.
-
-## 14. Assumptions and Limitations
-
-| Issue | Why it matters | Response / next step |
+| Issue | Effect on interpretation | Next step |
 |---|---|---|
-| Only approved loans are observed | Results may not apply to rejected applicants | Limit conclusions to the observed population |
-| Only resolved loans are retained | Cohorts may be selective | State the bias and seek better follow-up information |
-| Outcome dates are unavailable | Time splitting may not match information available at deployment | Obtain outcome dates for a more realistic evaluation |
-| Stratified CV mixes years | Validation results may hide temporal changes | Retain the later-year test and consider a chronological check |
-| Income is self-reported | Inputs may contain reporting errors | Evaluate transformations and seek verification information |
-| Few loans have FICO below 660 | Performance is uncertain for this population | Avoid unsupported extrapolation |
-| Data are historical | Current lending conditions may differ | Validate on more recent cohorts with sufficient follow-up |
-| ZIP removal does not ensure fairness | Other features may still act as proxies | Review remaining features and subgroup outcomes |
-| Probability calibration is unverified | Scores may not represent actual default probabilities | Assess calibration before interpreting probabilities |
-| Probabilities are too low in 2016 (predicted 18.5% vs actual 23.3%) | Scores understate default risk for a later group of loans | Use the scores for ranking only; recalibrate on recent finished loans before using them as probabilities |
-| Costs and recoveries are missing | Lower default frequency does not prove higher profit | Avoid profit claims and seek financial data |
-| Overall test prevalence was inspected | The holdout was not completely untouched | Disclose this and keep remaining decisions separate |
+| Only issued loans are observed | Results may differ for rejected applicants | Obtain broader application data and assess coverage |
+| Only resolved outcomes are retained | Cohorts may be selective | Seek fuller follow-up information |
+| Outcome dates are unavailable | Time splitting cannot fully reproduce historical label availability | Construct an as-of evaluation |
+| Stratified CV mixes years | CV does not simulate future deployment | Add chronological validation |
+| Tuning and policy selection reuse development folds | Selected development scores may be optimistic | Use nested or separate validation in further work |
+| Some test information was inspected | Holdout independence is incomplete | Reserve a new cohort for confirmation |
+| DTI 999 is treated as missing | Its meaning is undocumented | Verify the code and test alternative treatments |
+| Income is self-reported | Reporting errors can affect predictions | Add verification information |
+| Few observations have FICO below 660 | Evidence for this group is limited | Obtain more representative observations |
+| Probabilities underestimate 2016 defaults | Scores understate later-cohort risk | Assess recalibration on recent labelled data |
+| Protected-group labels are absent | Direct racial disparity assessment is unavailable | Obtain an appropriate subgroup evaluation dataset |
+| Financial returns and losses are absent | Default reductions cannot be translated directly into profit | Add costs, exposure and recovery information |
 
-## 15. How to Run the Project
+## 16. Repository and Reproduction
 
-### Current notebooks
+### Files
 
-| File | Purpose | Status |
-|---|---|---|
-| `01_split_and_sample(1).ipynb` | Time split and stratified sampling | Completed |
-| `02_eda.ipynb` | Training-data exploration | Completed |
-| Shared pipeline notebook/module | Reusable preprocessing | TBD |
-| Model comparison notebook | Baseline, CV and error analysis | TBD |
-| `05_tuning_and_final_evaluation.ipynb` | Search, ensemble and test results | Completed |
+| File | Purpose |
+|---|---|
+| [01_split_and_sample.ipynb](notebooks/01_split_and_sample.ipynb) | Temporal split and sampling |
+| [02_eda.ipynb](notebooks/02_eda.ipynb) | Training-data exploration |
+| [03_pipeline.ipynb](notebooks/03_pipeline.ipynb) | Pipeline explanation and checks |
+| [preprocessing.py](notebooks/preprocessing.py) | Shared preprocessing |
+| [04_modeling_baseline.ipynb](notebooks/04_modeling_baseline.ipynb) | Baseline, CV, importance and error analysis |
+| [05_tuning_and_final_evaluation.ipynb](notebooks/05_tuning_and_final_evaluation.ipynb) | Tuning, ensembles, policies and final evaluation |
+| [requirements.txt](requirements.txt) | Dependency list |
+| `data/train.csv` | 150,000-loan development sample |
+| `data/test.csv` | 50,000-loan test sample |
 
-### Execution order
+### Setup
 
-1. Download `LC_loans_granting_model_dataset.csv` from Zenodo.
-2. Place the CSV where notebook 01 expects it.
-3. Run notebook 01 to create `train.csv` and `test.csv`.
-4. Run notebook 02 on `train.csv`.
-5. Run the pipeline and modelling notebooks once available.
-6. Run final evaluation after model and policy choices are frozen.
+```bash
+git clone https://github.com/o-tunamonana/lending-club-default-prediction.git
+cd lending-club-default-prediction
+python -m pip install -r requirements.txt
+cd notebooks
+jupyter notebook
+```
 
-The current split and EDA notebooks use the working directory for the sample CSV files. If the repo owner moves data into a `data/` folder, update paths consistently.
+Scikit-learn 1.4 or later is required for the gradient boosting parameter search in notebook 05.
 
-### Environment
+### Execution
 
-- **Python version:** TBD
-- **Package versions / requirements:** TBD
-- **Sampling seed:** 42
-- **CV seed:** 42
-- **Other experiment seeds:** document in the relevant notebooks
+Run notebooks from the `notebooks/` directory in numerical order.
 
-The repo owner will finalize folder paths, dependencies, and execution instructions.
+To regenerate the samples, download the raw CSV from Zenodo and place it at:
 
-Check data redistribution terms before committing raw or derived data.
+```text
+data/LC_loans_granting_model_dataset.csv
+```
 
-## 16. Presentation Plan — 10 Minutes
+The repository already includes `data/train.csv` and `data/test.csv`, so notebooks 02–05 can run without regenerating the split.
 
-| Time | Speaker | Main content |
-|---|---|---|
-| 0:00–2:00 | Project Lead | Business problem, users, dataset fit, metrics and scope |
-| 2:00–4:00 | EDA | Main data quirks and selected charts with takeaways |
-| 4:00–6:00 | Pipeline | Time split, shared preprocessing, engineered features and leakage checks |
-| 6:00–8:00 | Baseline & Shortlist | CV results, important variables, errors and lessons |
-| 8:00–10:00 | Fine-tuning & Evaluation | Final results, approval/default trade-off, limitations and conclusion |
+Notebook 05 saves intermediate results under `notebooks/results/` and figures under `notebooks/figures/`. Remove the relevant cached results before recomputing after changes to code, data, or parameters.
 
-The project lead collects GitHub IDs, combines slides, checks transitions, and organizes rehearsal.
+Sampling, shuffled CV, randomized search, and approval tie-breaking use seed **42**.
 
-Each person prepares and presents their own section. We will agree on the final conclusion together.
+## 17. Conclusion
 
-### Presentation rules
+Application-time features improve risk ranking beyond FICO alone.
 
-- Start with the business problem.
-- Use labelled, readable charts.
-- Give each chart one clear takeaway.
-- Avoid pasting large notebook outputs onto slides.
-- Explain both successful and unsuccessful experiments.
-- End with what the results support and where the evidence stops.
-- Keep the total presentation within 10 minutes.
+At **80% approval**, tuned gradient boosting retained 40,000 test loans with a **19.50%** default rate, compared with **21.56%** for FICO. This represents **827 fewer defaulted loans** at the same approval volume.
 
-## 17. Eight-Day Plan
-
-| Days | Focus | Expected output |
-|---|---|---|
-| 1–2 | Framing, repo setup, EDA, split, pipeline skeleton and baseline | Shared data, initial README, EDA findings and runnable baseline |
-| 3–5 | Feature engineering and model comparison | CV tables, experiment log, error analysis and shortlist |
-| 6–7 | Tuning, ensemble, final evaluation, README and slides | Frozen final model, results, completed documentation and slide draft |
-| 8 | Cross-review, rehearsal and final repo check | Reproducible repository and presentation within 10 minutes |
-
-## 18. Final Submission Checklist
-
-- [ ] Everyone’s name and GitHub ID are recorded.
-- [ ] Each variable is profiled in the EDA notebook.
-- [ ] Each chart has labels and a takeaway.
-- [ ] The shared pipeline has been cross-reviewed for leakage.
-- [ ] Model comparisons include CV mean and standard deviation.
-- [ ] The shortlist and selection reasons are documented.
-- [ ] Feature importance and error analysis are included.
-- [x] Hyperparameter tuning and ensemble results are recorded.
-- [x] Threshold selection is separate from final test evaluation.
-- [ ] Actual successful and unsuccessful attempts are documented.
-- [ ] Assumptions include likely impacts and next steps.
-- [ ] Results and instructions match the final code.
-- [ ] Dependencies and execution order are recorded.
-- [ ] Result placeholders are replaced before submission.
-- [ ] Slides fit the 10-minute limit.
-
-## 19. Current Conclusion
-
-The completed data split and EDA provide a starting point for comparing default-risk models.
-
-The next step is to test whether additional application features improve risk ranking and the approval–default trade-off relative to the FICO-only baseline.
-
-Our final recommendation will depend on validation-selected procedures and reserved-test results. We will interpret those results within the limits of historical approved-loan data.
+The main remaining issue is calibration: ranking transferred to 2016, but probabilities underestimated its higher default level. Further work should assess chronological validation, recalibration, and dependence on geographic features.
 
 ## References
 
