@@ -68,7 +68,7 @@ Each person documents their own work and presents for about two minutes. The pro
 | TBD | TBD | Data Exploration | Variable profiles, data quirks, charts and takeaways | TBD |
 | TBD | TBD | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges | TBD |
 | TBD | TBD | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis | TBD |
-| TBD | TBD | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation | TBD |
+| Nat Suriyapanuwat | 261345843 | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation | TBD |
 
 ### Shared rules
 
@@ -396,86 +396,85 @@ We will also discuss what additional information a human reviewer might have nee
 | Employment missingness treatment | Preserve missingness information | TBD | TBD |
 | State inclusion versus exclusion | Assess predictive value and geographic dependence | TBD | TBD |
 
-## 10. Fine-tuning and Ensemble
-
-**Owner: Fine-tuning & Final Evaluation teammate**  
-**Status: Pending**
+## 10. Fine-tuning and Ensemble 
+(`05_tuning_and_final_evaluation.ipynb`)
 
 ### Hyperparameter tuning
 
-Use `RandomizedSearchCV` on the training data for selected candidates.
+- **Method:** `RandomizedSearchCV`
+- **CV:** stratified 5-fold, shuffle, seed 42 (same folds as notebook 04)
+- **Search seed:** 42
+- **Primary metric:** ROC-AUC, with AP recorded as well
+- **Preprocessing:** shared v2 pipeline, refitted inside every fold
 
-Record:
-
-- Search ranges
-- Number of sampled configurations
-- CV settings
-- Random seed
-- Primary scoring metric
-- Best settings
-- Validation results
-
-Use ROC-AUC as the primary search metric and report AP as well. Randomized search allows us to explore broader parameter spaces within the project timeline.
-
-Uncertain preprocessing choices should also be compared using validation data.
+Tuning made very little difference. The biggest gain was +0.0009 ROC-AUC, about a fifth of the fold standard deviation. Many different gradient boosting settings all score between 0.663 and 0.664, so we think performance is limited by the information in the application features rather than by the hyperparameters.
 
 ### Ensemble
 
-Try an ensemble of suitable models and compare it with the best individual model.
+We tried a soft-voting ensemble (the average of the three tuned models) and a stacking ensemble (logistic regression on top, inner 5-fold CV). Before running them, we agreed to only use an ensemble if it beat the best single model by more than one fold standard deviation.
 
-An ensemble does not have to win. We will report whether its performance justifies the extra complexity.
+Both ensembles were better than tuned gradient boosting in all 5 folds, but only by +0.0006 (fold SD = 0.0046), and AP did not improve. The three models' predictions are 93-97% correlated, so averaging them adds very little. We kept tuned gradient boosting as the final model.
 
-| Candidate | Search method / budget | Best settings | Validation result | Decision |
+| Candidate | Search method / budget | Best settings | Validation result (CV ROC-AUC, mean ± SD; AP) | Decision |
 |---|---|---|---|---|
-| Candidate 1 | TBD | TBD | TBD | TBD |
-| Candidate 2 | TBD | TBD | TBD | TBD |
-| Candidate 3 | TBD | TBD | TBD | TBD |
-| Ensemble | TBD | TBD | TBD | TBD |
+| Gradient boosting (`HistGradientBoostingClassifier`) | Random search, 40 configs: learning_rate 0.01-0.2, max_iter 100-800, max_leaf_nodes 7-63, min_samples_leaf 20-500, l2_regularization 0.001-10, max_features 0.5-1.0 | learning_rate 0.025, max_iter 510 (with early stopping), max_leaf_nodes 15, min_samples_leaf 337, l2 0.026, max_features 0.58 | 0.6636 ± 0.0046 (untuned 0.6627); AP 0.3012 | **Final model** |
+| Random forest | Random search, 20 configs: n_estimators 200-500, max_depth 8-24 or none, min_samples_leaf 5-200, max_features sqrt/0.3/0.5 | 258 trees, max_depth 16, min_samples_leaf 53, max_features sqrt | 0.6612 ± 0.0039 (untuned 0.6608); AP 0.2973 | Not selected |
+| Logistic regression | Random search, 15 configs: C 0.001-10, penalty l1/l2 | C 2.14, l2 | 0.6610 ± 0.0047 (untuned 0.6610); AP 0.2966 | Not selected (simplest alternative) |
+| Ensemble | Soft voting (equal weights) and stacking (learned weights about equal: GB 2.45, RF 1.97, LR 2.40), same folds | n/a | Both 0.6642 ± 0.0044; AP 0.3011 | Not used: gain below one fold SD |
 
 ## 11. Threshold Selection and Final Evaluation
-
-**Owner: Fine-tuning & Final Evaluation teammate**  
-**Status: Pending**
-
 ### Policy selection
 
-Use a held-out portion of training data or clearly documented out-of-fold predictions to select an approval policy.
+We chose the policy using out-of-fold predictions on the training set, before opening the test set.
 
-Do not select thresholds using in-sample fitted predictions or final test outcomes.
-
-If the policy approves the safest X%, define the approval fraction and tie-handling rule before examining test results.
+- **Policy:** approve the safest **80%** of loans by predicted default risk. The full curve from 10% to 100% is also reported.
+- **Ties:** loans are sorted by score, with ties broken in random order (seed 42). This matters for the FICO baseline, which only has a few dozen different scores.
+- **Score cutoff at 80% on the training set:** predicted default probability ≤ 0.2565 for the final model (≤ 0.2281 for the FICO baseline).
+- **Training OOF result:** at 80% approval, the default rate among approved loans is 15.06% with the final model vs 17.08% with FICO (18.46% if everyone is approved). The probabilities were well calibrated on the training data: every decile was within 0.7 points, and the Brier score was 0.1427 vs 0.1481 for FICO.
 
 ### Final evaluation procedure
 
-1. Select the model and hyperparameters using development validation.
-2. Select the approval policy using validation predictions.
-3. Freeze preprocessing, model settings, and policy.
-4. Refit the selected procedure on the training data.
-5. Evaluate the final model and baseline on the reserved test set.
-6. Do not tune further in response to test results.
+1. Chose the model and its settings with CV on the training set (section 10).
+2. Chose the approval policy with the training OOF predictions.
+3. Fixed the preprocessing, model settings and policy.
+4. Refit the final model and the baseline on all 150,000 training loans.
+5. Scored the 2016 test set (50,000 loans) **once**. The predictions were saved, and nothing was changed after seeing the results.
 
 ### Predictive results
 
 | Model | Test ROC-AUC | Test AP | Main conclusion |
 |---|---|---|---|
-| FICO-only baseline | TBD | TBD | TBD |
-| Final model | TBD | TBD | TBD |
+| FICO-only baseline | 0.5943 | 0.2822 | Weak ranking, close to its CV score (0.5904) |
+| Final model (tuned gradient boosting) | 0.6639 | 0.3598 | Better ranking; the test score matches CV (0.6636), so no sign of overfitting |
+
+The AP of a random model on the test set is 0.2328 (the test default rate). Using 1,000 bootstrap samples of the test set, the model beats the baseline by +0.070 ROC-AUC (95% interval 0.064 to 0.076) and +0.078 AP (0.071 to 0.085).
 
 ### Business results
 
 | Policy | Test approval rate | Default rate among approved loans | Approved count |
 |---|---|---|---|
 | Retain all historical test loans | 100% | 23.28% | 50,000 |
-| Baseline policy selected on validation | TBD | TBD | TBD |
-| Final policy selected on validation | TBD | TBD | TBD |
+| Baseline policy selected on validation (safest 80%) | 80.00% | 21.56% | 40,000 |
+| Final policy selected on validation (safest 80%) | 80.00% | 19.50% | 40,000 |
+| *Extra:* baseline with training cutoff ≤ 0.2281 | 81.24% | 21.70% | 40,621 |
+| *Extra:* final model with training cutoff ≤ 0.2565 | 80.07% | 19.50% | 40,036 |
 
 The retain-all row is a descriptive reference, not a model result.
 
-Our final business statement will use actual results:
+> At an approval rate of **80%**, the final model retained loans with an observed default rate of **19.50%**, compared with **21.56%** for the baseline at the same approval rate and **23.28%** if every 2016 test loan is retained. The difference from the baseline is -2.1 points (95% bootstrap interval -2.37 to -1.85).
 
-> At an approval rate of **TBD%**, the final model retained loans with an observed default rate of **TBD%**, compared with **TBD%** for the baseline at a similar approval rate.
+At other approval rates on the test set, the safest 50% gives 14.86% (model) vs 18.40% (FICO), and the safest 90% gives 21.08% vs 22.48%. The model is better at every approval rate from 10% to 90%.
 
-We will use the actual test reference rate of **23.28%**, rather than an illustrative 20%.
+**Errors at 80% approval (test set), with default as the positive class:**
+
+| | Final model | FICO baseline |
+|---|---|---|
+| False approvals (approved, then defaulted) | 7,799 | 8,626 |
+| False rejections (rejected, would have repaid) | 6,158 | 6,985 |
+| Defaults caught (recall) | 3,842 (33.0%) | 3,015 (25.9%) |
+| Rejected loans that defaulted (precision) | 38.4% | 30.2% |
+
+**Calibration in 2016.** For the 2016 loans the model predicts an average default rate of 18.5%, but 23.3% actually defaulted, and most deciles are 3-7 points too low. The ranking still works, so both the rank-based policy and the training cutoff hold up (80.07% approved). The scores should not be read as real default probabilities for a new year unless they are recalibrated on recent loans.
 
 ## 12. Why We Exclude ZIP Code
 
@@ -521,7 +520,10 @@ Each modelling teammate will add lessons from actual experiments, including atte
 |---|---|---|---|
 | TBD | TBD | TBD | TBD |
 | TBD | TBD | TBD | TBD |
-| Ensemble | Combine model strengths | TBD | TBD |
+| Ensemble | Combine model strengths | Soft voting and stacking: +0.0006 CV ROC-AUC in 5/5 folds, no AP gain, below our one-SD rule | The models are 93-97% correlated, so it is not worth running three |
+| Shared v2 pipeline instead of notebook 04's preprocessing | Better features (log transforms, loan-to-income, state encoding) | +0.002 to +0.007 CV ROC-AUC for the three shortlisted models | Small but consistent gain, biggest for logistic regression |
+| `RandomizedSearchCV` on 3 models (75 configs) | Higher ROC-AUC from better settings | At most +0.0009 CV ROC-AUC (less than 1/5 of a fold SD) | Performance is limited by the data, not the model settings |
+| Training score cutoff applied to 2016 | A threshold that could be used in practice | Approved 80.07% of 2016 loans (target 80%) | The ranking is stable across years even though calibration is not |
 
 We will not describe an approach as unsuccessful without supporting results.
 
@@ -538,6 +540,7 @@ We will not describe an approach as unsuccessful without supporting results.
 | Data are historical | Current lending conditions may differ | Validate on more recent cohorts with sufficient follow-up |
 | ZIP removal does not ensure fairness | Other features may still act as proxies | Review remaining features and subgroup outcomes |
 | Probability calibration is unverified | Scores may not represent actual default probabilities | Assess calibration before interpreting probabilities |
+| Probabilities are too low in 2016 (predicted 18.5% vs actual 23.3%) | Scores understate default risk for a later group of loans | Use the scores for ranking only; recalibrate on recent finished loans before using them as probabilities |
 | Costs and recoveries are missing | Lower default frequency does not prove higher profit | Avoid profit claims and seek financial data |
 | Overall test prevalence was inspected | The holdout was not completely untouched | Disclose this and keep remaining decisions separate |
 
@@ -551,7 +554,7 @@ We will not describe an approach as unsuccessful without supporting results.
 | `02_eda.ipynb` | Training-data exploration | Completed |
 | Shared pipeline notebook/module | Reusable preprocessing | TBD |
 | Model comparison notebook | Baseline, CV and error analysis | TBD |
-| Tuning and final evaluation notebook | Search, ensemble and test results | TBD |
+| `05_tuning_and_final_evaluation.ipynb` | Search, ensemble and test results | Completed |
 
 ### Execution order
 
@@ -618,8 +621,8 @@ Each person prepares and presents their own section. We will agree on the final 
 - [ ] Model comparisons include CV mean and standard deviation.
 - [ ] The shortlist and selection reasons are documented.
 - [ ] Feature importance and error analysis are included.
-- [ ] Hyperparameter tuning and ensemble results are recorded.
-- [ ] Threshold selection is separate from final test evaluation.
+- [x] Hyperparameter tuning and ensemble results are recorded.
+- [x] Threshold selection is separate from final test evaluation.
 - [ ] Actual successful and unsuccessful attempts are documented.
 - [ ] Assumptions include likely impacts and next steps.
 - [ ] Results and instructions match the final code.
