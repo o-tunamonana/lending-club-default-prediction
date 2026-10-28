@@ -67,7 +67,7 @@ Each person documents their own work and presents for about two minutes. The pro
 | Dora Zhuang | 261012351 | Project Lead & Storyteller | Business framing, metrics, README, assumptions, limitations, slides and presentation flow | TBD |
 | TBD | TBD | Data Exploration | Variable profiles, data quirks, charts and takeaways | TBD |
 | TBD | TBD | Data Preparation & Pipeline / Repo Owner | Time split, sampling, shared pipeline, repo structure and merges | TBD |
-| TBD | TBD | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis | TBD |
+| Bingqiang Zhao | 261350698 | Baseline & Shortlist | Baseline, model comparison, feature importance and error analysis | TBD |
 | Nat Suriyapanuwat | 261345843 | Fine-tuning & Final Evaluation | Hyperparameter search, ensemble, threshold selection and final test evaluation | TBD |
 
 ### Shared rules
@@ -310,8 +310,8 @@ We will also examine:
 
 ## 8. Baseline, Model Comparison and Shortlist
 
-**Owner: Baseline & Shortlist teammate**  
-**Status: Results pending**
+**Owner: Bingqiang Zhao**  
+**Status: Completed**
 
 ### Models
 
@@ -340,20 +340,27 @@ The separate 2016 test set provides the later-period comparison. A chronological
 
 ### Model comparison results
 
-| Model | CV ROC-AUC, mean ± SD | CV AP, mean ± SD | Runtime | Main observation |
-|---|---|---|---|---|
-| FICO-only logistic regression | TBD | TBD | TBD | Baseline |
-| Multivariable logistic regression | TBD | TBD | TBD | TBD |
-| Decision tree | TBD | TBD | TBD | TBD |
-| Random forest | TBD | TBD | TBD | TBD |
-| Gradient boosting | TBD | TBD | TBD | TBD |
-| kNN, if included | TBD | TBD | TBD | TBD |
+| Model | ROC-AUC (mean ± sample std) | Mean AP | Mean Brier |
+|---|---:|---:|---:|
+| Gradient boosting | 0.6627 ± 0.0047 | 0.3007 | 0.1428 |
+| Logistic regression | 0.6610 ± 0.0047 | 0.2965 | 0.1430 |
+| Random forest | 0.6608 ± 0.0041 | 0.2970 | 0.1431 |
+| Extra Trees | 0.6554 ± 0.0039 | 0.2930 | 0.1447 |
+| Decision tree | 0.6420 ± 0.0044 | 0.2736 | 0.1448 |
+| FICO-only baseline | 0.5904 ± 0.0043 | 0.2254 | 0.1481 |
 
 The course rubric asks for a shortlist of **3–5 promising candidates**. We will document this shortlist, then prioritize the strongest **2–3** for detailed tuning, following our team plan.
 
 Selection should consider performance, stability, runtime, interpretability, and error patterns.
 
-**Shortlist and reasons:** TBD.
+**Shortlist:** Gradient boosting, Logistic regression, Random forest. Selection uses mean ROC-AUC, with AP as an exact-tie breaker; other metrics and errors support review rather than automatic selection. Fold-to-fold standard deviations are not confidence intervals or a significance test.
+
+For **Gradient boosting**, the four largest mean held-out permutation AUC reductions were `fico_n` (0.0673), `loan_amnt` (0.0657), `revenue` (0.0340), `dti_n` (0.0264). Importance is measured on original inputs; shuffling loan amount or income also changes the derived loan-to-income ratio. These values do not establish causation.
+
+At the initial **0.50 threshold**, Gradient boosting detected **82 of 27,684 defaults** and missed **27,602** (FNR **99.70%**), with **73** false positives. Review recall and conditional error rates before treating this as an approval rule; a high accuracy can conceal missed defaults in an imbalanced sample. The segment tables above show the actual group counts and error rates.
+
+These results replace those from the earlier independent preprocessing recipe; the feature set and transformations have changed. The shared module is used unchanged. Hyperparameter tuning and cost-based threshold selection remain future steps using training data only, followed by final evaluation on the untouched 2016 sample. No final estimator has yet been refitted on all training rows.
+
 
 ## 9. Feature Importance, Error Analysis and Iteration
 
