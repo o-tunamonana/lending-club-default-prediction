@@ -1,0 +1,10 @@
+.git
+.github
+.env
+notebooks
+data
+tests
+ci-model
+mlruns
+**/__pycache__
+**/.pytest_cache
