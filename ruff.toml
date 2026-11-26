@@ -1,0 +1,10 @@
+line-length = 120
+target-version = "py311"
+extend-exclude = ["notebooks"]
+
+[lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]  # FastAPI uses calls in default arguments (Header(...))
+
+[lint.isort]
+known-first-party = ["lcdp", "app"]
