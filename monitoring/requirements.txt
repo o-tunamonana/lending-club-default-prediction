@@ -1,0 +1,7 @@
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+evidently==0.4.40
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+requests==2.32.3
