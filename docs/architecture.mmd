@@ -1,0 +1,31 @@
+flowchart LR
+    %% Source of truth for the architecture diagram (also embedded in README.md)
+    user([Loan officer]) -->|fills form| fe[Frontend<br/>Flask :8080]
+    fe -->|POST /predict| api[Model API<br/>FastAPI :8000]
+    api -->|JSON prediction| fe
+
+    subgraph training_pipeline [Training pipeline]
+        data[(data/train.csv<br/>2007–2015 loans)] -->|load + validate| flow[Prefect flow<br/>lending-club-training]
+        flow -->|params, metrics, models| mlflow[MLflow tracking<br/>:5001]
+        flow -->|register + alias champion| registry[(MLflow model registry<br/>lending-club-default)]
+    end
+
+    registry -->|load champion every 30 s| api
+    api -->|log features + prediction| pg[(PostgreSQL<br/>predictions, drift_metrics)]
+
+    subgraph monitoring [Monitoring]
+        sim[Traffic simulator<br/>2016 test loans<br/>DRIFT on/off] -->|POST /predict + /feedback| api
+        prom[Prometheus :9090] -->|scrape /metrics| api
+        mon[Evidently monitor] -->|read last 500 predictions| pg
+        mon -->|write drift + quality metrics| pg
+        graf[Grafana :3000<br/>dashboard + alerts] -->|query| prom
+        graf -->|query| pg
+    end
+
+    mon -->|dataset drift: trigger run| flow
+    pg -.->|labelled production data for retraining| flow
+
+    subgraph cicd [GitHub]
+        pr[Pull request] -->|lint + unit + integration tests| ci[GitHub Actions CI]
+        main[Merge to main] -->|build + push images| ghcr[(GitHub Container Registry)]
+    end
