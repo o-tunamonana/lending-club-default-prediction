@@ -61,15 +61,15 @@ def test_api_container():
         assert feedback.status_code == 200, feedback.text
         row = compose(
             "exec", "-T", "postgres", "psql", "-U", "lcdp_test", "-d", "lcdp_test",
-            "-Atc", f"SELECT model_version, scenario, actual FROM predictions WHERE id = {prediction_id}",
+            "-Atc", f"SELECT model_version, scenario, actual, approval_cutoff FROM predictions WHERE id = {prediction_id}",
         )
-        assert row == "1|normal|0"
+        assert row == "1|normal|0|0.5"
 
         invalid = requests.post(f"{base}/predict", json={**LOAN, "fico_n": 999}, timeout=10)
         assert invalid.status_code == 422
         metrics = requests.get(f"{base}/metrics", timeout=10).text
         assert 'api_requests_total{endpoint="/predict",status="200"} 1.0' in metrics
-        assert 'api_errors_total{endpoint="/predict",status="422"} 1.0' in metrics
+        assert 'api_errors_total{endpoint="/predict",kind="validation",status="422"} 1.0' in metrics
         assert 'api_request_latency_seconds_count{endpoint="/predict"} 2.0' in metrics
     except subprocess.CalledProcessError as exc:
         pytest.fail(f"{exc}\n{exc.stdout}\n{exc.stderr}")
