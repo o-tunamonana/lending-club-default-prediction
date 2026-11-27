@@ -133,7 +133,7 @@ API_URL=http://localhost:8000 pytest -m integration   # needs the API running
 **Retraining rule:** when Evidently reports dataset drift (at least half of the inputs drifted),
 the monitor starts the Prefect deployment with `reason=drift`. The flow retrains on the training data
 plus production predictions whose outcome is known, registers a new version and moves the
-`champion` alias. A 15-minute cooldown prevents repeated runs.
+`champion` alias. It retrains at most once per drift episode (until a window without drift is seen), so sustained drift does not retrain every cycle; failed triggers are retried on the next cycle.
 
 ## 5. Monitoring: normal traffic vs. drift
 
@@ -181,7 +181,7 @@ renters.
 | `tests/test_preprocessing.py` | A known input gives the expected features (loan-to-income, DTI placeholder, employment years); no missing values after the pipeline; unseen categories |
 | `tests/test_model.py` | The model beats the FICO baseline and a naive constant prediction; the 80% approval policy lowers the default rate |
 | `tests/test_predictions.py` | Probabilities are in [0, 1]; higher FICO lowers risk; lower income raises risk |
-| `tests/test_drift.py` | Same-period data is not flagged; injected drift is flagged and triggers retraining; cooldown |
+| `tests/test_drift.py` | Same-period data is not flagged; injected drift is flagged and triggers retraining; once per drift episode; cutoff from the API |
 | `tests/test_api.py` | Valid requests, decision thresholds, bad input → 422, no model → 503, `/metrics` |
 | `tests/integration/test_api_container.py` | Starts the API container and sends it real HTTP requests |
 
