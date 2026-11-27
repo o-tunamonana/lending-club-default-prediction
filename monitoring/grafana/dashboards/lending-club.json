@@ -35,7 +35,7 @@
       "gridPos": {
         "x": 0,
         "y": 1,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "targets": [
@@ -75,9 +75,9 @@
       "title": "Latency p50 / p95",
       "type": "timeseries",
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 1,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "targets": [
@@ -123,12 +123,12 @@
     },
     {
       "id": 4,
-      "title": "Error rate",
+      "title": "Server error rate",
       "type": "timeseries",
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 1,
-        "w": 8,
+        "w": 6,
         "h": 8
       },
       "targets": [
@@ -138,8 +138,8 @@
             "uid": "prometheus"
           },
           "refId": "A",
-          "expr": "sum(rate(api_errors_total{endpoint=\"/predict\"}[1m])) / clamp_min(sum(rate(api_requests_total{endpoint=\"/predict\"}[1m])), 1e-9)",
-          "legendFormat": "error rate"
+          "expr": "(sum(rate(api_errors_total{endpoint=\"/predict\", kind!=\"validation\"}[1m])) or vector(0)) / clamp_min(sum(rate(api_requests_total{endpoint=\"/predict\"}[1m])), 1e-9)",
+          "legendFormat": "server errors"
         }
       ],
       "fieldConfig": {
@@ -151,7 +151,8 @@
             "showPoints": "never",
             "thresholdsStyle": {
               "mode": "line"
-            }
+            },
+            "axisSoftMax": 0.1
           },
           "thresholds": {
             "mode": "absolute",
@@ -182,6 +183,50 @@
     },
     {
       "id": 5,
+      "title": "Invalid requests (422)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 18,
+        "y": 1,
+        "w": 6,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "sum(rate(api_errors_total{endpoint=\"/predict\", kind=\"validation\"}[1m])) / clamp_min(sum(rate(api_requests_total{endpoint=\"/predict\"}[1m])), 1e-9)",
+          "legendFormat": "share rejected by validation"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "description": "Client mistakes rejected with a 422. Shown separately so they do not trigger the server error alert (the simulator sends ~2% on purpose)."
+    },
+    {
+      "id": 6,
       "title": "Decisions per second",
       "type": "timeseries",
       "gridPos": {
@@ -223,7 +268,7 @@
       }
     },
     {
-      "id": 6,
+      "id": 7,
       "title": "Mean predicted default probability",
       "type": "timeseries",
       "gridPos": {
@@ -266,7 +311,7 @@
       "description": "Prediction drift: riskier applicants push the average predicted probability up."
     },
     {
-      "id": 7,
+      "id": 8,
       "title": "Model version served",
       "type": "stat",
       "gridPos": {
@@ -303,7 +348,7 @@
       }
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "row",
       "title": "Data drift & model quality (Evidently \u2192 Postgres)",
       "collapsed": false,
@@ -316,7 +361,7 @@
       "panels": []
     },
     {
-      "id": 9,
+      "id": 10,
       "title": "Dataset drift",
       "type": "stat",
       "gridPos": {
@@ -382,7 +427,7 @@
       }
     },
     {
-      "id": 10,
+      "id": 11,
       "title": "Share of drifted features",
       "type": "timeseries",
       "gridPos": {
@@ -445,7 +490,7 @@
       "description": "Evidently DataDriftPreset over the last 500 predictions vs the 2015 training cohort. Red line = dataset drift threshold (50%)."
     },
     {
-      "id": 11,
+      "id": 12,
       "title": "Drift score by feature",
       "type": "timeseries",
       "gridPos": {
@@ -489,7 +534,7 @@
       "description": "Wasserstein distance (numeric) / Jensen-Shannon distance (categorical); 0.1 = drift threshold."
     },
     {
-      "id": 12,
+      "id": 13,
       "title": "Retraining runs",
       "type": "stat",
       "gridPos": {
@@ -508,7 +553,7 @@
           "rawQuery": true,
           "editorMode": "code",
           "format": "table",
-          "rawSql": "SELECT count(*) AS runs FROM retraining_events WHERE $__timeFilter(created_at)"
+          "rawSql": "SELECT count(*) AS runs FROM retraining_events WHERE $__timeFilter(created_at) AND status = 'triggered'"
         }
       ],
       "fieldConfig": {
@@ -526,7 +571,7 @@
       }
     },
     {
-      "id": 13,
+      "id": 14,
       "title": "ROC AUC on labelled predictions",
       "type": "timeseries",
       "gridPos": {
@@ -585,7 +630,7 @@
       }
     },
     {
-      "id": 14,
+      "id": 15,
       "title": "Predicted vs actual default rate",
       "type": "timeseries",
       "gridPos": {
@@ -629,7 +674,7 @@
       }
     },
     {
-      "id": 15,
+      "id": 16,
       "title": "Retraining events",
       "type": "table",
       "gridPos": {
@@ -671,7 +716,7 @@
         "target": {
           "rawQuery": true,
           "format": "table",
-          "rawSql": "SELECT created_at AS time, 'Retraining triggered (drift share ' || round(drift_share::numeric,2) || ')' AS text FROM retraining_events WHERE $__timeFilter(created_at)"
+          "rawSql": "SELECT created_at AS time, 'Retraining triggered (drift share ' || round(drift_share::numeric,2) || ')' AS text FROM retraining_events WHERE $__timeFilter(created_at) AND status = 'triggered'"
         }
       }
     ]

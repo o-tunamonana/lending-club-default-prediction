@@ -77,7 +77,7 @@ groups:
                 - evaluator: {type: lt, params: [0.6]}
 
       - uid: lcdp-error-rate
-        title: API error rate above 5%
+        title: API server error rate above 5%
         condition: C
         for: 1m
         noDataState: OK
@@ -85,7 +85,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: More than 5% of /predict requests fail
+          summary: More than 5% of /predict requests fail on the server side (invalid input / 422 is excluded)
         data:
           - refId: A
             datasourceUid: prometheus
@@ -93,7 +93,7 @@ groups:
             model:
               refId: A
               expr: >
-                sum(rate(api_errors_total{endpoint="/predict"}[2m]))
+                (sum(rate(api_errors_total{endpoint="/predict", kind!="validation"}[2m])) or vector(0))
                 / clamp_min(sum(rate(api_requests_total{endpoint="/predict"}[2m])), 1e-9)
               instant: true
           - refId: B
