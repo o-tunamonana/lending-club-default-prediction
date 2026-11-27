@@ -1,0 +1,31 @@
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --ink: #1d2327; --muted: #5d676e; --line: #dcdfe2;
+  --accent: #1f5fa8; --ok: #1d7a4a; --warn: #b7791f; --bad: #b3362f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 16px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+h1 { margin: 0 0 4px; font-size: 1.6rem; }
+header p { color: var(--muted); margin: 0 0 24px; max-width: 640px; }
+.layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+form, .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 4px; }
+input, select { font: inherit; color: var(--ink); padding: 8px 10px; border: 1px solid var(--line);
+                border-radius: 6px; background: #fff; }
+button { grid-column: 1 / -1; font: inherit; font-weight: 600; padding: 10px; border: 0;
+         border-radius: 6px; background: var(--accent); color: #fff; cursor: pointer; }
+button:hover { filter: brightness(1.1); }
+.placeholder { color: var(--muted); }
+.label { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.decision { margin: 0; font-size: 2rem; font-weight: 700; }
+.approve .decision { color: var(--ok); } .review .decision { color: var(--warn); }
+.reject .decision { color: var(--bad); }
+.prob { margin: 4px 0 12px; font-size: 1.1rem; }
+.bar { position: relative; height: 10px; background: #eceef0; border-radius: 5px; margin-bottom: 12px; }
+.bar span { display: block; height: 100%; border-radius: 5px; background: var(--accent); }
+.bar i { position: absolute; top: -4px; width: 2px; height: 18px; background: var(--ink); }
+.small { font-size: 0.85rem; color: var(--muted); }
+.error { color: var(--bad); } .error h2 { font-size: 1.1rem; margin-top: 0; }
+@media (max-width: 760px) { .layout, form { grid-template-columns: 1fr; } }

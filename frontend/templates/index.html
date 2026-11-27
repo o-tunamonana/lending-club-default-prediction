@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loan Default Risk</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Loan default risk check</h1>
+    <p>Enter the application details. The model returns the probability that the loan is charged off,
+       and a decision based on approving the safest 80% of historical loans.</p>
+  </header>
+
+  <div class="layout">
+    <form method="post" novalidate>
+      <label>Annual income (USD)
+        <input name="revenue" inputmode="decimal" value="{{ values.revenue }}" required>
+      </label>
+      <label>Loan amount (USD)
+        <input name="loan_amnt" inputmode="decimal" value="{{ values.loan_amnt }}" required>
+      </label>
+      <label>FICO score (300–850)
+        <input name="fico_n" inputmode="numeric" value="{{ values.fico_n }}" required>
+      </label>
+      <label>Debt-to-income ratio (%)
+        <input name="dti_n" inputmode="decimal" value="{{ values.dti_n }}" required>
+      </label>
+      <label>Employment length
+        <select name="emp_length">
+          {% for v in emp_length %}<option value="{{ v }}" {% if v == values.emp_length %}selected{% endif %}>{{ 'Not provided' if v == 'NI' else v }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Loan purpose
+        <select name="purpose">
+          {% for v in purpose %}<option value="{{ v }}" {% if v == values.purpose %}selected{% endif %}>{{ v.replace('_', ' ') }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Home ownership
+        <select name="home_ownership_n">
+          {% for v in home %}<option value="{{ v }}" {% if v == values.home_ownership_n %}selected{% endif %}>{{ v.title() }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>State
+        <select name="addr_state">
+          {% for v in states %}<option value="{{ v }}" {% if v == values.addr_state %}selected{% endif %}>{{ v }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit">Check risk</button>
+    </form>
+
+    <section class="panel" aria-live="polite">
+      {% if errors %}
+        <div class="error">
+          <h2>Could not score this application</h2>
+          <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+        </div>
+      {% elif result %}
+        <div class="result {{ result.decision }}">
+          <p class="label">Decision</p>
+          <p class="decision">{{ result.decision | capitalize }}</p>
+          <p class="prob">{{ '%.1f' % (result.default_probability * 100) }}% chance of default</p>
+          <div class="bar"><span style="width: {{ [result.default_probability * 100, 100] | min }}%"></span>
+            <i style="left: {{ result.approval_cutoff * 100 }}%"></i></div>
+          <p class="small">Risk level: <strong>{{ result.risk_level }}</strong>.
+            Loans at or below {{ '%.1f' % (result.approval_cutoff * 100) }}% are approved.
+            Model version {{ result.model_version }}.</p>
+        </div>
+      {% else %}
+        <p class="placeholder">The prediction will appear here.</p>
+      {% endif %}
+    </section>
+  </div>
+</main>
+</body>
+</html>
