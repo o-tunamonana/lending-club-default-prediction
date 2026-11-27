@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     actual              SMALLINT,
     feedback_at         TIMESTAMPTZ
 );
+ALTER TABLE predictions ADD COLUMN IF NOT EXISTS approval_cutoff DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS predictions_created_at_idx ON predictions (created_at);
 
 -- One row per Evidently run over the latest window of predictions.
