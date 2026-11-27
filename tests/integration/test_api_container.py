@@ -61,7 +61,8 @@ def test_api_container():
         assert feedback.status_code == 200, feedback.text
         row = compose(
             "exec", "-T", "postgres", "psql", "-U", "lcdp_test", "-d", "lcdp_test",
-            "-Atc", f"SELECT model_version, scenario, actual, approval_cutoff FROM predictions WHERE id = {prediction_id}",
+            "-Atc", "SELECT model_version, scenario, actual, approval_cutoff "
+            f"FROM predictions WHERE id = {prediction_id}",
         )
         assert row == "1|normal|0|0.5"
 
