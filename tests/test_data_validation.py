@@ -43,3 +43,11 @@ def test_unknown_employment_length_fails(train_df):
     df.loc[df.index[0], "emp_length"] = "eleven years"
     with pytest.raises(DataValidationError, match="emp_length"):
         validate_training_data(df)
+
+
+@pytest.mark.parametrize("column", ["revenue", "loan_amnt", "fico_n"])
+def test_negative_values_fail(train_df, column):
+    df = train_df.copy()
+    df.loc[df.index[0], column] = -1
+    with pytest.raises(DataValidationError, match="Negative values"):
+        validate_training_data(df)
