@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     addr_state          TEXT,
     default_probability DOUBLE PRECISION NOT NULL,
     decision            TEXT NOT NULL,
+    approval_cutoff     DOUBLE PRECISION,   -- cutoff the model version used for this decision
     model_version       TEXT,
     scenario            TEXT,
     actual              SMALLINT,

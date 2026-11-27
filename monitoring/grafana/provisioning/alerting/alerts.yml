@@ -1,0 +1,139 @@
+# Grafana alert rules, provisioned as code.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: model-monitoring
+    folder: Lending Club
+    interval: 30s
+    rules:
+      - uid: lcdp-data-drift
+        title: Data drift detected
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: Evidently flags dataset drift on the latest prediction window
+          description: At least half of the model inputs drifted from the training reference. The monitor triggers the Prefect retraining flow.
+        data:
+          - refId: A
+            datasourceUid: postgres
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              editorMode: code
+              format: time_series
+              rawQuery: true
+              rawSql: >
+                SELECT created_at AS time, CASE WHEN dataset_drift THEN 1 ELSE 0 END AS dataset_drift
+                FROM drift_metrics WHERE created_at > now() - interval '10 minutes' ORDER BY 1
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0]}
+
+      - uid: lcdp-auc-drop
+        title: Model AUC below 0.60
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: ROC AUC on labelled recent predictions dropped below 0.60
+        data:
+          - refId: A
+            datasourceUid: postgres
+            relativeTimeRange: {from: 600, to: 0}
+            model:
+              refId: A
+              editorMode: code
+              format: time_series
+              rawQuery: true
+              rawSql: >
+                SELECT created_at AS time, roc_auc FROM drift_metrics
+                WHERE created_at > now() - interval '10 minutes' AND roc_auc IS NOT NULL ORDER BY 1
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: lt, params: [0.6]}
+
+      - uid: lcdp-error-rate
+        title: API server error rate above 5%
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5% of /predict requests fail on the server side (invalid input / 422 is excluded)
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              refId: A
+              expr: >
+                (sum(rate(api_errors_total{endpoint="/predict", kind!="validation"}[2m])) or vector(0))
+                / clamp_min(sum(rate(api_requests_total{endpoint="/predict"}[2m])), 1e-9)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.05]}
+
+      - uid: lcdp-latency
+        title: API p95 latency above 500 ms
+        condition: C
+        for: 1m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: 95th percentile latency of /predict is above 0.5 s
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(api_request_latency_seconds_bucket{endpoint="/predict"}[2m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: {refId: B, type: reduce, expression: A, reducer: last}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: {type: gt, params: [0.5]}
