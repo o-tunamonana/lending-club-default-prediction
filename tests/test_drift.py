@@ -1,8 +1,9 @@
 """Drift detection: injected drift is flagged, clean data is not, and drift triggers retraining."""
 
+import pandas as pd
 import pytest
 
-from lcdp.drift import detect_data_drift, inject_drift, model_performance, should_retrain
+from lcdp.drift import decision_cutoff, detect_data_drift, inject_drift, model_performance, should_retrain
 
 
 @pytest.fixture(scope="module")
@@ -42,3 +43,22 @@ def test_model_performance_from_labels(test_df):
     perf = model_performance(labelled, cutoff=0.5)
     assert perf["roc_auc"] == pytest.approx(1.0)
     assert model_performance(labelled.head(10), cutoff=0.5) is None
+
+
+def test_only_one_retraining_per_drift_episode():
+    # Sustained drift after a successful retrain must not retrain again every cooldown period
+    assert not should_retrain(True, last_trigger_ts=0, now=10_000, cooldown=900, retrained_this_episode=True)
+    assert should_retrain(True, last_trigger_ts=0, now=10_000, cooldown=900, retrained_this_episode=False)
+
+
+def test_cutoff_uses_logged_value_from_latest_prediction():
+    window = pd.DataFrame({"id": [1, 2, 3], "decision": ["approve", "reject", "approve"],
+                           "default_probability": [0.1, 0.5, 0.2], "approval_cutoff": [0.27, 0.27, 0.31]})
+    assert decision_cutoff(window) == 0.31
+
+
+def test_cutoff_fallback_without_logged_value():
+    window = pd.DataFrame({"id": [1, 2, 3, 4], "decision": ["approve", "approve", "review", "reject"],
+                           "default_probability": [0.10, 0.26, 0.30, 0.60], "approval_cutoff": [None] * 4})
+    assert decision_cutoff(window) == pytest.approx(0.28)  # between highest approved and lowest other
+    assert decision_cutoff(window.assign(decision="reject")) is None

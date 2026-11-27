@@ -11,7 +11,7 @@ import pandas as pd
 import requests
 from sqlalchemy import create_engine, text
 
-from lcdp.drift import detect_data_drift, model_performance, should_retrain
+from lcdp.drift import decision_cutoff, detect_data_drift, model_performance, should_retrain
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("monitor")
@@ -44,9 +44,22 @@ def recent_window() -> pd.DataFrame:
 
 
 def last_trigger_time() -> float | None:
+    """Time of the last retraining run that actually started (failed attempts don't count)."""
     with engine.connect() as conn:
-        ts = conn.execute(text("SELECT extract(epoch FROM max(created_at)) FROM retraining_events")).scalar()
+        ts = conn.execute(text("""SELECT extract(epoch FROM max(created_at)) FROM retraining_events
+                                  WHERE status = 'triggered'""")).scalar()
     return float(ts) if ts is not None else None
+
+
+def retrained_this_episode() -> bool:
+    """True if a retraining run already started since the last window without drift."""
+    with engine.connect() as conn:
+        return bool(conn.execute(text("""
+            SELECT EXISTS (
+                SELECT 1 FROM retraining_events
+                WHERE status = 'triggered'
+                  AND created_at > COALESCE((SELECT max(created_at) FROM drift_metrics WHERE NOT dataset_drift),
+                                            '-infinity'::timestamptz))""")).scalar())
 
 
 def trigger_retraining(drift_share: float) -> str | None:
@@ -94,14 +107,17 @@ def run_once(reference: pd.DataFrame) -> None:
     drift = detect_data_drift(reference, window)
 
     labelled = window[window["actual"].notna()]
-    approved = window.loc[window["decision"] == "approve", "default_probability"]
-    cutoff = float(approved.max()) if len(approved) else 0.5
-    perf = model_performance(labelled, cutoff)
+    cutoff = decision_cutoff(window)
+    # ROC AUC does not need a cutoff; precision/recall/F1 are only meaningful with the API's real one
+    perf = model_performance(labelled, cutoff if cutoff is not None else 0.5)
+    if perf and cutoff is None:
+        perf = {"roc_auc": perf["roc_auc"]} if "roc_auc" in perf else None
     save(window, drift, perf)
-    log.info("drift_share=%.2f dataset_drift=%s auc=%s", drift["drift_share"],
-             drift["dataset_drift"], perf and round(perf.get("roc_auc", 0), 3))
+    log.info("drift_share=%.2f dataset_drift=%s auc=%s cutoff=%s", drift["drift_share"],
+             drift["dataset_drift"], perf and round(perf.get("roc_auc", 0), 3), cutoff and round(cutoff, 3))
 
-    if should_retrain(drift["dataset_drift"], last_trigger_time(), time.time(), COOLDOWN):
+    if should_retrain(drift["dataset_drift"], last_trigger_time(), time.time(), COOLDOWN,
+                      retrained_this_episode=retrained_this_episode()):
         status, run_id = "triggered", None
         try:
             run_id = trigger_retraining(drift["drift_share"])

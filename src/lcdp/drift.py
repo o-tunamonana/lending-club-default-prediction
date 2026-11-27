@@ -79,9 +79,38 @@ def model_performance(labelled: pd.DataFrame, cutoff: float) -> dict | None:
     return {k: float(result[k]) for k in keys if result.get(k) is not None}
 
 
+def decision_cutoff(window: pd.DataFrame) -> float | None:
+    """Approval cutoff the API used for this window of predictions.
+
+    Prefer the `approval_cutoff` the API logged with each prediction (the most
+    recent one, since the model can change inside the window). For older rows
+    without it, the cutoff lies between the highest approved and the lowest
+    non-approved probability, so take the midpoint. Returns None when there is
+    no way to tell (e.g. nothing was approved).
+    """
+    if "approval_cutoff" in window and window["approval_cutoff"].notna().any():
+        latest = window.sort_values("id")["approval_cutoff"].dropna()
+        return float(latest.iloc[-1])
+    approved = window.loc[window["decision"] == "approve", "default_probability"]
+    others = window.loc[window["decision"] != "approve", "default_probability"]
+    if approved.empty:
+        return None
+    if others.empty:
+        return float(approved.max())
+    return float((approved.max() + others.min()) / 2)
+
+
 def should_retrain(dataset_drift: bool, last_trigger_ts: float | None, now: float,
-                   cooldown: float = RETRAIN_COOLDOWN_SECONDS) -> bool:
-    """Retrain on dataset drift, but at most once per cooldown window."""
-    if not dataset_drift:
+                   cooldown: float = RETRAIN_COOLDOWN_SECONDS,
+                   retrained_this_episode: bool = False) -> bool:
+    """Retrain on dataset drift, at most once per drift episode and once per cooldown window.
+
+    An episode starts when drift appears and ends at the first window without
+    drift. Without this, sustained drift would retrain every cooldown period,
+    because the reference stays fixed to the original training cohort.
+    `last_trigger_ts` should only count triggers that succeeded, so a failed
+    trigger (e.g. Prefect unreachable) is retried on the next cycle.
+    """
+    if not dataset_drift or retrained_this_episode:
         return False
     return last_trigger_ts is None or now - last_trigger_ts >= cooldown
