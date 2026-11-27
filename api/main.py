@@ -118,10 +118,10 @@ def create_app():
     latency = Histogram(
         "api_request_latency_seconds", "API request latency", ["endpoint"], registry=registry,
     )
-    model_version = Info("api_model_version", "Loaded champion model version", registry=registry)
-    decisions = Counter("api_decisions", "Served decisions", ["decision"], registry=registry)
+    model_version = Info("model_version", "Loaded champion model version", registry=registry)
+    decisions = Counter("model_predictions", "Served decisions", ["decision"], registry=registry)
     probabilities = Histogram(
-        "api_default_probability", "Served default probabilities", registry=registry,
+        "model_default_probability", "Served default probabilities", registry=registry,
         buckets=(0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50, 0.75, 1.0),
     )
 
