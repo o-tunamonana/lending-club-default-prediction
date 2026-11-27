@@ -40,7 +40,7 @@ def client(tmp_path):
             CREATE TABLE predictions (
                 id INTEGER PRIMARY KEY, revenue REAL, dti_n REAL, loan_amnt REAL,
                 fico_n REAL, emp_length TEXT, purpose TEXT, home_ownership_n TEXT,
-                addr_state TEXT, default_probability REAL, decision TEXT,
+                addr_state TEXT, default_probability REAL, approval_cutoff REAL, decision TEXT,
                 model_version TEXT, scenario TEXT, actual INTEGER, feedback_at TEXT
             )
         """))
