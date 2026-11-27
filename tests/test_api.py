@@ -83,7 +83,7 @@ def test_invalid_input_returns_field_and_updates_metrics(client, changes, field)
     assert response.json()["detail"][0]["loc"][-1] == field
     metrics = http.get("/metrics").text
     assert 'api_requests_total{endpoint="/predict",status="422"} 1.0' in metrics
-    assert 'api_errors_total{endpoint="/predict",status="422"} 1.0' in metrics
+    assert 'api_errors_total{endpoint="/predict",kind="validation",status="422"} 1.0' in metrics
     with engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM predictions")).scalar_one() == 0
 
@@ -102,6 +102,7 @@ def test_prediction_and_feedback_are_logged(client):
     assert row["actual"] == 1
     assert row["fico_n"] == LOAN["fico_n"]
     assert row["default_probability"] == result["default_probability"]
+    assert row["approval_cutoff"] == result["approval_cutoff"] == 0.5
     assert row["model_version"] == "7"
 
 
