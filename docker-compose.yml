@@ -1,0 +1,157 @@
+# Full stack: docker compose up --build   |   stop: docker compose down (-v also wipes data)
+# Copy .env.example to .env first. Switch to drift traffic: DRIFT=true docker compose up -d simulator
+
+name: lending-club
+
+x-db-url: &db-url postgresql://${POSTGRES_USER:?copy .env.example to .env}:${POSTGRES_PASSWORD:?copy .env.example to .env}@postgres:5432/${POSTGRES_DB:-monitoring}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-monitoring}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts --serve-artifacts
+    volumes:
+      - mlflow:/mlflow
+    ports:
+      - "5001:5000"   # 5000 is taken by AirPlay on macOS
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      retries: 20
+
+  prefect:
+    image: prefecthq/prefect:3.1.15-python3.11
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_UI_API_URL: http://localhost:4200/api
+    volumes:
+      - prefect:/root/.prefect
+    ports:
+      - "4200:4200"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 5s
+      retries: 30
+
+  training:
+    build:
+      context: .
+      dockerfile: training/Dockerfile
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      PREFECT_API_URL: http://prefect:4200/api
+      DATABASE_URL: *db-url
+      TRAIN_PATH: data/train.csv
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      mlflow: {condition: service_healthy}
+      prefect: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      DATABASE_URL: *db-url
+      RELOAD_SECONDS: "30"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mlflow: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "8080:5000"
+    depends_on:
+      - api
+
+  monitor:
+    build:
+      context: .
+      dockerfile: monitoring/Dockerfile
+    image: lcdp-monitoring:local
+    environment:
+      DATABASE_URL: *db-url
+      PREFECT_API_URL: http://prefect:4200/api
+      INTERVAL_SECONDS: "30"
+      WINDOW_SIZE: "500"
+      RETRAIN_COOLDOWN_SECONDS: "900"
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+
+  simulator:
+    image: lcdp-monitoring:local
+    command: python monitoring/simulate.py
+    environment:
+      API_URL: http://api:8000
+      DRIFT: ${DRIFT:-false}
+      SIM_RATE: ${SIM_RATE:-5}
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      - api
+      - monitor
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?copy .env.example to .env}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-monitoring}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - postgres
+
+volumes:
+  pgdata:
+  mlflow:
+  prefect:
+  grafana:
