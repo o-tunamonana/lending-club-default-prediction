@@ -1,0 +1,19 @@
+name: Model API integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  api-integration:
+    runs-on: ubuntu-latest
+    env:
+      RUN_API_CONTAINER_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pytest==8.3.4 requests==2.32.3
+      - run: pytest -m integration tests/integration/test_api_container.py
