@@ -114,7 +114,9 @@ UPDATE_FEEDBACK = text(
 def create_app():
     registry = CollectorRegistry()
     requests = Counter("api_requests", "API requests", ["endpoint", "status"], registry=registry)
-    errors = Counter("api_errors", "API responses with status >= 400", ["endpoint", "status"], registry=registry)
+    errors = Counter(
+        "api_errors", "API responses with status >= 400", ["endpoint", "status", "kind"], registry=registry,
+    )
     latency = Histogram(
         "api_request_latency_seconds", "API request latency", ["endpoint"], registry=registry,
     )
@@ -185,7 +187,10 @@ def create_app():
             requests.labels(endpoint, str(status)).inc()
             latency.labels(endpoint).observe(perf_counter() - start)
             if status >= 400:
-                errors.labels(endpoint, str(status)).inc()
+                kind = "server" if status >= 500 else "client"
+                if status == 422:
+                    kind = "validation"
+                errors.labels(endpoint, str(status), kind).inc()
 
     @app.get("/health")
     def health(response: Response):
