@@ -100,9 +100,10 @@ def load_champion(client, current):
 
 
 INSERT_PREDICTION = text(
-    f"INSERT INTO predictions ({', '.join(FEATURES)}, default_probability, decision, model_version, scenario) "
+    f"INSERT INTO predictions ({', '.join(FEATURES)}, "
+    "default_probability, decision, model_version, scenario, approval_cutoff) "
     f"VALUES ({', '.join(':' + field for field in FEATURES)}, "
-    ":default_probability, :decision, :model_version, :scenario) RETURNING id"
+    ":default_probability, :decision, :model_version, :scenario, :approval_cutoff) RETURNING id"
 )
 UPDATE_FEEDBACK = text(
     "UPDATE predictions SET actual = :actual, feedback_at = COALESCE(feedback_at, now()) "
@@ -232,6 +233,7 @@ def create_app():
                     "decision": decision,
                     "model_version": champion.version,
                     "scenario": scenario,
+                    "approval_cutoff": champion.cutoff,
                 }).scalar_one()
         except SQLAlchemyError as exc:
             log.exception("Could not log prediction")
